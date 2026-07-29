@@ -1091,5 +1091,7 @@ class InMemoryDatabase {
 
 }
 
-// Global Singleton Instance
-export const dbStore = new InMemoryDatabase();
+// Global Singleton Instance to preserve in-memory store state across HMR / API route reloads
+const globalForDb = globalThis as unknown as { dbStore: InMemoryDatabase };
+export const dbStore = globalForDb.dbStore || new InMemoryDatabase();
+if (process.env.NODE_ENV !== 'production') globalForDb.dbStore = dbStore;

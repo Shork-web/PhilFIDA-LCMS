@@ -59,7 +59,7 @@ export default function AccountManagementPage() {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(`/api/users?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       setUsers(data.data || []);
     } catch {

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { userSchema } from '@/lib/validations/schemas';
 import { UserService } from '@/lib/services/user-service';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const users = await UserService.getAll();
