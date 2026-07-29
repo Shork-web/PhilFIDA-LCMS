@@ -59,7 +59,7 @@ async function callPlcmsLogin(params: {
     body: JSON.stringify(params),
   });
   const data = await res.json();
-  if (!res.ok) throw { code: data.error, message: data.message || 'Authentication failed' };
+  if (!res.ok) throw { code: data.error, message: data.message || 'Authentication failed', user: data.user };
   return data;
 }
 
@@ -81,6 +81,9 @@ export default function LoginPage() {
   // ─── Handle account status codes ─────────────────────────────────────────
   const handleAuthError = (err: any) => {
     if (err?.code === 'ACCOUNT_PENDING') {
+      if (err.user) {
+        setAuth(err.user);
+      }
       router.push('/pending-approval');
       return;
     }

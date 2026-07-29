@@ -32,20 +32,22 @@ export default function PendingApprovalPage() {
     setChecking(true);
     try {
       let currentAccount = null;
+      const targetEmail = user?.email || auth?.currentUser?.email;
+      const targetId = user?.id;
 
-      if (user?.id) {
-        const res = await fetch(`/api/users/${user.id}`);
+      if (targetId) {
+        const res = await fetch(`/api/users/${targetId}?t=${Date.now()}`, { cache: 'no-store' });
         const data = await res.json();
         if (data.success && data.data) {
           currentAccount = data.data;
         }
       }
 
-      if (!currentAccount && user?.email) {
-        const res = await fetch('/api/users');
+      if (!currentAccount && targetEmail) {
+        const res = await fetch(`/api/users?t=${Date.now()}`, { cache: 'no-store' });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) {
-          currentAccount = data.data.find((u: any) => u.email.toLowerCase() === user.email.toLowerCase());
+          currentAccount = data.data.find((u: any) => u.email.toLowerCase() === targetEmail.toLowerCase());
         }
       }
 

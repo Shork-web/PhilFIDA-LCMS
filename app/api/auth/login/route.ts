@@ -76,8 +76,17 @@ export async function POST(req: NextRequest) {
 
     // --- Account Status Enforcement ---
     if (user.accountStatus === 'Pending') {
+      const role = user.roleId ? await RoleService.getById(user.roleId) : null;
       return NextResponse.json(
-        { error: 'ACCOUNT_PENDING', message: 'Your account is pending administrator approval. You will be notified once approved.' },
+        {
+          error: 'ACCOUNT_PENDING',
+          message: 'Your account is pending administrator approval. You will be notified once approved.',
+          user: {
+            ...user,
+            roleName: role?.roleName || 'Staff (Employee)',
+            permissions: role?.permissions || [],
+          },
+        },
         { status: 403 }
       );
     }
