@@ -17,11 +17,13 @@ import { BootstrapService } from '@/lib/services/bootstrap-service';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, displayName, photoUrl, authProvider } = body as {
+    const { email, displayName, photoUrl, authProvider, position, division } = body as {
       email: string;
       displayName?: string;
       photoUrl?: string;
       authProvider: 'email' | 'google';
+      position?: string;
+      division?: string;
     };
 
     if (!email) {
@@ -56,9 +58,9 @@ export async function POST(req: NextRequest) {
           lastName,
           email,
           contactNumber: 'N/A',
-          position: 'Employee - Staff',
+          position: position || 'Employee - Staff',
           office: 'Regional Office VII',
-          division: 'Technical Services Division',
+          division: division || 'Technical Services Division',
           appointmentType: 'Permanent',
           employmentStatus: 'Active',
           appointmentDate: new Date().toISOString().split('T')[0],

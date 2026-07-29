@@ -21,6 +21,8 @@ import { ShieldCheck, Lock, Mail, Eye, EyeOff, User, KeyRound } from 'lucide-rea
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+import { PHILFIDA_DIVISIONS } from '@/lib/constants';
+
 type TabType = 'login' | 'register' | 'forgot';
 
 const loginSchema = z.object({
@@ -31,6 +33,8 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   displayName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Enter a valid email address'),
+  position: z.string().min(2, 'Position title is required'),
+  division: z.string().min(1, 'Please select your division / unit'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine(d => d.password === d.confirmPassword, {
@@ -51,6 +55,8 @@ async function callPlcmsLogin(params: {
   email: string;
   displayName?: string;
   photoUrl?: string;
+  position?: string;
+  division?: string;
   authProvider: 'email' | 'google';
 }) {
   const res = await fetch('/api/auth/login', {
@@ -74,7 +80,14 @@ export default function LoginPage() {
   // Login form
   const loginForm = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
   // Register form
-  const registerForm = useForm<RegisterValues>({ resolver: zodResolver(registerSchema) });
+  const registerForm = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      position: 'Employee - Staff',
+      division: PHILFIDA_DIVISIONS[0],
+    },
+  });
+
   // Forgot password form
   const forgotForm = useForm<ForgotValues>({ resolver: zodResolver(forgotSchema) });
 
@@ -162,6 +175,8 @@ export default function LoginPage() {
       const data = await callPlcmsLogin({
         email: values.email,
         displayName: values.displayName,
+        position: values.position,
+        division: values.division,
         authProvider: 'email',
       });
 
@@ -350,6 +365,36 @@ export default function LoginPage() {
                   {...registerForm.register('email')}
                   className="bg-slate-950 border-slate-700 text-white"
                 />
+
+                <Input
+                  label="Position Title"
+                  placeholder="e.g. Fibre Development Officer II"
+                  error={registerForm.formState.errors.position?.message}
+                  {...registerForm.register('position')}
+                  className="bg-slate-950 border-slate-700 text-white text-xs"
+                />
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Division / Unit
+                  </label>
+                  <select
+                    {...registerForm.register('division')}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="">Select Division / Unit...</option>
+                    {PHILFIDA_DIVISIONS.map((div) => (
+                      <option key={div} value={div}>
+                        {div}
+                      </option>
+                    ))}
+                  </select>
+                  {registerForm.formState.errors.division && (
+                    <p className="text-[11px] text-red-400 mt-1">
+                      {registerForm.formState.errors.division.message}
+                    </p>
+                  )}
+                </div>
 
                 <div className="relative">
                   <Input

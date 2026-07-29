@@ -25,4 +25,8 @@ export class UserService {
   static async toggleActive(id: string, isActive: boolean): Promise<User | null> {
     return dbStore.updateUser(id, { isActive });
   }
+
+  static async delete(id: string): Promise<boolean> {
+    return dbStore.deleteUser(id);
+  }
 }

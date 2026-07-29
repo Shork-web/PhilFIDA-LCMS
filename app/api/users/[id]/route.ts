@@ -150,6 +150,22 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: updated });
     }
 
+    if (action === 'delete') {
+      if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+        return NextResponse.json({ error: 'Primary IT / MIS Super Admin accounts cannot be deleted!' }, { status: 400 });
+      }
+      await UserService.delete(id);
+      await AuditService.log({
+        userId: actorId || 'system',
+        action: 'USER_DELETED',
+        module: 'Account Management',
+        recordId: id,
+        oldValue: { email: existingUser.email, roleId: existingUser.roleId, accountStatus: existingUser.accountStatus },
+        newValue: null,
+      });
+      return NextResponse.json({ success: true, message: 'Account permanently deleted from system.' });
+    }
+
     if (action === 'reset_password') {
       // Firebase password reset is handled client-side; this is an audit trail entry only
       await AuditService.log({
@@ -172,5 +188,23 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json({ error: 'Failed to modify user', message: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const existingUser = await UserService.getById(id);
+    if (!existingUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+      return NextResponse.json({ error: 'Primary IT / MIS Super Admin accounts cannot be deleted!' }, { status: 400 });
+    }
+    await UserService.delete(id);
+    return NextResponse.json({ success: true, message: 'Account permanently deleted.' });
+  } catch (error: any) {
+    return NextResponse.json({ error: 'Failed to delete user', message: error.message }, { status: 500 });
   }
 }

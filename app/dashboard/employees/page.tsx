@@ -327,7 +327,6 @@ export default function EmployeesPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 uppercase font-bold tracking-wider border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="px-4 py-3">Employee #</th>
                   <th className="px-4 py-3">Full Name</th>
                   <th className="px-4 py-3">Office & Division</th>
                   <th className="px-4 py-3">Position</th>
@@ -339,9 +338,6 @@ export default function EmployeesPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {paginatedEmployees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-[#0F2C59] dark:text-amber-400">
-                      {emp.employeeNumber}
-                    </td>
                     <td className="px-4 py-3">
                       <div className="font-bold text-slate-900 dark:text-white">
                         {emp.lastName}, {emp.firstName} {emp.middleName ? `${emp.middleName[0]}.` : ''} {emp.suffix}

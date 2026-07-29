@@ -116,42 +116,7 @@ export const INITIAL_HOLIDAYS: Holiday[] = [
   { id: 'hol_11', holidayName: 'Rizal Day', holidayType: 'Regular', date: '2026-12-30', isRecurring: true, createdAt: '2026-01-01T08:00:00.000Z' },
 ];
 
-export const INITIAL_EMPLOYEES: Employee[] = [
-  {
-    id: 'emp_03',
-    employeeNumber: 'EMP-2026-003',
-    firstName: 'Juan',
-    lastName: 'Dela Cruz',
-    email: 'juan.delacruz@philfida.da.gov.ph',
-    contactNumber: '09181112233',
-    position: 'Fibre Development Officer II',
-    office: 'Regional Office VII',
-    division: 'Fibre Extension Services',
-    appointmentType: 'Permanent',
-    employmentStatus: 'Active',
-    appointmentDate: '2025-06-15',
-    isActive: true,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-  },
-  {
-    id: 'emp_04',
-    employeeNumber: 'EMP-2026-004',
-    firstName: 'Maria',
-    lastName: 'Santos',
-    email: 'maria.santos@philfida.da.gov.ph',
-    contactNumber: '09194445566',
-    position: 'Administrative Assistant III',
-    office: 'Regional Office VII',
-    division: 'Administrative & Finance Division',
-    appointmentType: 'Permanent',
-    employmentStatus: 'Active',
-    appointmentDate: '2024-03-10',
-    isActive: true,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-  },
-];
+export const INITIAL_EMPLOYEES: Employee[] = [];
 
 export const INITIAL_SYSTEM_USERS: User[] = [
   {
@@ -177,18 +142,6 @@ export const INITIAL_SYSTEM_USERS: User[] = [
     authProvider: 'email',
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-01T08:00:00.000Z',
-  },
-  {
-    id: 'user_sample_pending',
-    username: 'new.staff',
-    email: 'new.staff@philfida.da.gov.ph',
-    displayName: 'New Staff (Pending Verification)',
-    roleId: 'role_employee',
-    accountStatus: 'Pending',
-    isActive: false,
-    authProvider: 'email',
-    createdAt: '2026-01-15T09:30:00.000Z',
-    updatedAt: '2026-01-15T09:30:00.000Z',
   },
 ];
 
@@ -265,31 +218,32 @@ class InMemoryDatabase {
   private init() {
     if (this.initialized) return;
 
-    // Bootstrap minimum system data
+    // Purge all sample data and write clean initial state to disk
+    this.clearAllSampleData();
+
+    this.initialized = true;
+  }
+
+  public clearAllSampleData() {
+    this.employees.clear();
+    this.users.clear();
+    this.leaveBalances.clear();
+    this.leaveTransactions.clear();
+    this.leaveApplications.clear();
+    this.ctoRequests.clear();
+    this.leaveAdjustments.clear();
+    this.auditLogs.clear();
+    this.notifications.clear();
+    this.monthlyAccrualLogs.clear();
+    this.generatedReports.clear();
+    this.documents.clear();
+
     INITIAL_ROLES.forEach(r => this.roles.set(r.id, { ...r }));
     INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
-    INITIAL_EMPLOYEES.forEach(e => {
-      this.employees.set(e.id, { ...e });
-      INITIAL_LEAVE_TYPES_LIST.forEach(lt => {
-        const balanceId = `lb_${e.id}_${lt.id}`;
-        if (!this.leaveBalances.has(balanceId)) {
-          this.leaveBalances.set(balanceId, {
-            id: balanceId,
-            employeeId: e.id,
-            leaveTypeId: lt.id,
-            balance: 15.0,
-            lastUpdated: '2026-01-01T08:00:00.000Z',
-          });
-        }
-      });
-    });
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
 
-    // Restore disk persisted state
-    this.loadFromDisk();
-
-    this.initialized = true;
+    this.saveToDisk();
   }
 
 
@@ -410,6 +364,19 @@ class InMemoryDatabase {
       employee: updated.employeeId ? this.employees.get(updated.employeeId) : undefined,
       role: this.roles.get(updated.roleId),
     };
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+    if (user.email.toLowerCase() === 'iversonwork039@gmail.com' || user.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+      throw new Error('Primary IT / MIS Super Admin accounts cannot be deleted!');
+    }
+    const success = this.users.delete(id);
+    if (success) {
+      this.saveToDisk();
+    }
+    return success;
   }
 
   // --- ROLES ---

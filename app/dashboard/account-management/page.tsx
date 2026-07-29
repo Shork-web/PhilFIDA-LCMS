@@ -7,7 +7,7 @@ import { User } from '@/types';
 import { toast } from 'sonner';
 import {
   UserCheck, UserX, Shield, Users, Clock, Ban, RefreshCw,
-  CheckCircle2, XCircle, AlertTriangle, Search, ChevronDown, Link2
+  CheckCircle2, XCircle, AlertTriangle, Search, ChevronDown, Link2, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -368,15 +368,30 @@ export default function AccountManagementPage() {
                       )}
 
                       {(activeTab === 'disabled' || activeTab === 'rejected') && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          isLoading={actionLoading === u.id + 'reactivate'}
-                          onClick={() => patchUser(u.id, 'reactivate')}
-                          className="text-xs"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Reactivate
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            isLoading={actionLoading === u.id + 'reactivate'}
+                            onClick={() => patchUser(u.id, 'reactivate')}
+                            className="text-xs"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Reactivate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            isLoading={actionLoading === u.id + 'delete'}
+                            onClick={() => {
+                              if (confirm(`WARNING: Are you sure you want to PERMANENTLY DELETE the account for "${u.displayName || u.username || u.email}"? This action cannot be undone.`)) {
+                                patchUser(u.id, 'delete');
+                              }
+                            }}
+                            className="text-xs border-red-500/30 text-red-500 hover:bg-red-500/10 font-medium"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-1 text-red-500" /> Delete Account
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>

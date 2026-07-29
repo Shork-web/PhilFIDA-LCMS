@@ -65,7 +65,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Export Center',         href: '/dashboard/export',        icon: Download,      permission: 'data.export', group: 'Reports & Tools' },
   // Administration
   { label: 'Account Management', href: '/dashboard/account-management', icon: Shield,       roleRequired: 'Super Admin', group: 'Administration', badge: 'Admin', badgeColor: 'bg-amber-400/20 text-amber-300 border-amber-400/30' },
-  { label: 'User Management',   href: '/dashboard/users',             icon: UserCheck,     permission: 'users.view', group: 'Administration' },
   { label: 'Audit Logs',        href: '/dashboard/audit-logs',        icon: History,       permission: 'audit_logs.view', group: 'Administration' },
   { label: 'System Settings',   href: '/dashboard/settings',          icon: Settings,      permission: 'settings.manage', group: 'Administration' },
 ];
