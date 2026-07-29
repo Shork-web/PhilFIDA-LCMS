@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       });
 
       // Automatically create matching Employee record for non-superadmin accounts so they reflect in the Employee Directory
-      const isSuperAdmin = email.toLowerCase() === 'iversonwork039@gmail.com' || email.toLowerCase() === 'admin@philfida.da.gov.ph' || payload.roleId === 'role_superadmin';
+      const isSuperAdmin = email.toLowerCase() === 'iversonwork039@gmail.com' || payload.roleId === 'role_superadmin';
       
       const allEmps = await EmployeeService.getAll();
       let matchingEmp = allEmps.find(e => e.email.toLowerCase() === email.toLowerCase());
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
           contactNumber: 'N/A',
           position: position || 'Employee - Staff',
           office: office || 'PhilFIDA Regional Office VII - Cebu HQ',
-          division: division || 'Administrative & Finance Division (AFD)',
+          division: division || 'AFMD - Admin Finance and Management Division',
           appointmentType: 'Permanent',
           employmentStatus: 'Active',
           appointmentDate: new Date().toISOString().split('T')[0],
@@ -77,13 +77,6 @@ export async function POST(req: NextRequest) {
     } else {
       // Sync photo/displayName if changed (Google sign-in) or link employee if missing
       let updates: Record<string, any> = {};
-      if (email.toLowerCase() === 'iversonwork039@gmail.com') {
-        if (user.roleId !== 'role_superadmin' || user.accountStatus !== 'Active' || !user.isActive) {
-          updates.roleId = 'role_superadmin';
-          updates.accountStatus = 'Active';
-          updates.isActive = true;
-        }
-      }
       if (photoUrl && photoUrl !== user.photoUrl) {
         updates.photoUrl = photoUrl;
         updates.displayName = displayName || user.displayName;

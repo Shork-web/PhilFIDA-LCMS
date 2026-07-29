@@ -50,7 +50,7 @@ export async function PATCH(
     // ─── Account Management Actions ──────────────────────────────────────────
     if (action === 'approve') {
       const targetRoleId = updateData.roleId || existingUser.roleId;
-      const isSuperAdmin = targetRoleId === 'role_superadmin' || existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph';
+      const isSuperAdmin = targetRoleId === 'role_superadmin' || existingUser.email.toLowerCase() === 'iversonwork039@gmail.com';
       let linkedEmployeeId = isSuperAdmin ? undefined : (updateData.employeeId || existingUser.employeeId);
 
       if (!isSuperAdmin && !linkedEmployeeId) {
@@ -151,7 +151,7 @@ export async function PATCH(
     }
 
     if (action === 'delete') {
-      if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+      if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com') {
         return NextResponse.json({ error: 'Primary IT / MIS Super Admin accounts cannot be deleted!' }, { status: 400 });
       }
       await UserService.delete(id);
@@ -199,7 +199,7 @@ export async function DELETE(
     const { id } = await params;
     const existingUser = await UserService.getById(id);
     if (!existingUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+    if (existingUser.email.toLowerCase() === 'iversonwork039@gmail.com') {
       return NextResponse.json({ error: 'Primary IT / MIS Super Admin accounts cannot be deleted!' }, { status: 400 });
     }
     await UserService.delete(id);

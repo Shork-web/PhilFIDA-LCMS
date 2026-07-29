@@ -10,19 +10,15 @@ export const PHILFIDA_OFFICES = [
 ] as const;
 
 export const PHILFIDA_DIVISIONS = [
-  'Office of the Regional Director (ORD)',
-  'Administrative & Finance Division (AFD)',
-  'Technical Services Division (TSD)',
-  'Human Resource Management Section (HRMS)',
-  'Accounting & Financial Management Section',
-  'Budget & Cashiering Section',
-  'Supply, Property & Procurement Section',
-  'Fiber Production & Regulation Section (FPRS)',
-  'Quality Control & Fiber Inspection Section (QCIS)',
-  'Research, Development & Extension Section (RDES)',
-  'Fiber Technology & Industry Development Unit',
-  'Regulatory, Licensing & Compliance Unit',
-  'Field Extension & Station Operations Unit',
+  // Support Division
+  'AFMD - Admin Finance and Management Division',
+  'Planning Division',
+  'MIS - Management Information System',
+  // Operations Division
+  'FUTD - Fiber Utilization and Technology Division',
+  'Research Division',
+  'Regulatory Division',
+  'TAD - Technical Assistance Division',
 ] as const;
 
 

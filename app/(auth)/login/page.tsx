@@ -85,7 +85,7 @@ export default function LoginPage() {
   const registerForm = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      position: 'Employee - Staff',
+      position: '',
       office: PHILFIDA_OFFICES[0],
       division: PHILFIDA_DIVISIONS[0],
     },
@@ -409,11 +409,17 @@ export default function LoginPage() {
                     className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
                   >
                     <option value="">Select Division / Unit...</option>
-                    {PHILFIDA_DIVISIONS.map((div) => (
-                      <option key={div} value={div}>
-                        {div}
-                      </option>
-                    ))}
+                    <optgroup label="── Support Division ──">
+                      <option value="AFMD - Admin Finance and Management Division">AFMD - Admin Finance and Management Division</option>
+                      <option value="Planning Division">Planning Division</option>
+                      <option value="MIS - Management Information System">MIS - Management Information System</option>
+                    </optgroup>
+                    <optgroup label="── Operations Division ──">
+                      <option value="FUTD - Fiber Utilization and Technology Division">FUTD - Fiber Utilization and Technology Division</option>
+                      <option value="Research Division">Research Division</option>
+                      <option value="Regulatory Division">Regulatory Division</option>
+                      <option value="TAD - Technical Assistance Division">TAD - Technical Assistance Division</option>
+                    </optgroup>
                   </select>
                   {registerForm.formState.errors.division && (
                     <p className="text-[11px] text-red-400 mt-1">

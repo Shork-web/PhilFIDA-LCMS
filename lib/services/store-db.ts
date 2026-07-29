@@ -131,18 +131,6 @@ export const INITIAL_SYSTEM_USERS: User[] = [
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-01T08:00:00.000Z',
   },
-  {
-    id: 'user_it_admin',
-    username: 'admin',
-    email: 'admin@philfida.da.gov.ph',
-    displayName: 'IT / MIS Administrator',
-    roleId: 'role_superadmin',
-    accountStatus: 'Active',
-    isActive: true,
-    authProvider: 'email',
-    createdAt: '2026-01-01T08:00:00.000Z',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-  },
 ];
 
 class InMemoryDatabase {
@@ -382,7 +370,7 @@ class InMemoryDatabase {
   async deleteUser(id: string): Promise<boolean> {
     const user = this.users.get(id);
     if (!user) return false;
-    if (user.email.toLowerCase() === 'iversonwork039@gmail.com' || user.email.toLowerCase() === 'admin@philfida.da.gov.ph') {
+    if (user.email.toLowerCase() === 'iversonwork039@gmail.com') {
       throw new Error('Primary IT / MIS Super Admin accounts cannot be deleted!');
     }
     const success = this.users.delete(id);
