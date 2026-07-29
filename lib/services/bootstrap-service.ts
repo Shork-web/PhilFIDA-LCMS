@@ -57,7 +57,8 @@ export class BootstrapService {
     authProvider: 'email' | 'google';
     photoUrl?: string;
   }): Omit<User, 'id' | 'createdAt' | 'updatedAt'> {
-    const isITAdmin = params.email.toLowerCase() === 'iversonwork039@gmail.com';
+    const emailLower = params.email.toLowerCase();
+    const isITAdmin = emailLower === 'iversonwork039@gmail.com' || emailLower === 'admin@philfida.da.gov.ph';
     return {
       username: params.displayName || params.email.split('@')[0],
       email: params.email,

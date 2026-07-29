@@ -21,7 +21,7 @@ import { ShieldCheck, Lock, Mail, Eye, EyeOff, User, KeyRound } from 'lucide-rea
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-import { PHILFIDA_DIVISIONS } from '@/lib/constants';
+import { PHILFIDA_DIVISIONS, PHILFIDA_OFFICES } from '@/lib/constants';
 
 type TabType = 'login' | 'register' | 'forgot';
 
@@ -34,6 +34,7 @@ const registerSchema = z.object({
   displayName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Enter a valid email address'),
   position: z.string().min(2, 'Position title is required'),
+  office: z.string().min(1, 'Please select your PhilFIDA Office Station'),
   division: z.string().min(1, 'Please select your division / unit'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
@@ -56,6 +57,7 @@ async function callPlcmsLogin(params: {
   displayName?: string;
   photoUrl?: string;
   position?: string;
+  office?: string;
   division?: string;
   authProvider: 'email' | 'google';
 }) {
@@ -84,6 +86,7 @@ export default function LoginPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       position: 'Employee - Staff',
+      office: PHILFIDA_OFFICES[0],
       division: PHILFIDA_DIVISIONS[0],
     },
   });
@@ -176,6 +179,7 @@ export default function LoginPage() {
         email: values.email,
         displayName: values.displayName,
         position: values.position,
+        office: values.office,
         division: values.division,
         authProvider: 'email',
       });
@@ -373,6 +377,28 @@ export default function LoginPage() {
                   {...registerForm.register('position')}
                   className="bg-slate-950 border-slate-700 text-white text-xs"
                 />
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    PhilFIDA Office Station
+                  </label>
+                  <select
+                    {...registerForm.register('office')}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="">Select Office Station...</option>
+                    {PHILFIDA_OFFICES.map((off) => (
+                      <option key={off} value={off}>
+                        {off}
+                      </option>
+                    ))}
+                  </select>
+                  {registerForm.formState.errors.office && (
+                    <p className="text-[11px] text-red-400 mt-1">
+                      {registerForm.formState.errors.office.message}
+                    </p>
+                  )}
+                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">

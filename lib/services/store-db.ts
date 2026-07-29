@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const DB_FILE_PATH = path.join(process.cwd(), '.next', 'philfida_users_cache.json');
+const DB_FILE_PATH = path.join(process.cwd(), '.next', 'philfida_db_cache.json');
 import { 
   Employee, 
   User, 
@@ -218,12 +218,23 @@ class InMemoryDatabase {
   private init() {
     if (this.initialized) return;
 
-    // Purge all sample data and write clean initial state to disk
-    this.clearAllSampleData();
+    // 1. Seed essential system reference data (roles, leave types, holidays, IT admin accounts)
+    INITIAL_ROLES.forEach(r => this.roles.set(r.id, { ...r }));
+    INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
+    INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
+    // Seed super admin accounts (they won't be overwritten when loadFromDisk merges)
+    INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
+
+    // 2. Restore persisted user/employee data from disk (registered users survive restarts)
+    this.loadFromDisk();
 
     this.initialized = true;
   }
 
+  /**
+   * Manual utility — call this ONLY to explicitly wipe all transient data back to factory state.
+   * NOT called automatically during startup.
+   */
   public clearAllSampleData() {
     this.employees.clear();
     this.users.clear();
@@ -279,6 +290,7 @@ class InMemoryDatabase {
       });
     });
 
+    this.saveToDisk();
     return newEmp;
   }
 
@@ -291,6 +303,7 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.employees.set(id, updated);
+    this.saveToDisk();
     return updated;
   }
 

@@ -17,13 +17,14 @@ import { BootstrapService } from '@/lib/services/bootstrap-service';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, displayName, photoUrl, authProvider, position, division } = body as {
+    const { email, displayName, photoUrl, authProvider, position, division, office } = body as {
       email: string;
       displayName?: string;
       photoUrl?: string;
       authProvider: 'email' | 'google';
       position?: string;
       division?: string;
+      office?: string;
     };
 
     if (!email) {
@@ -59,8 +60,8 @@ export async function POST(req: NextRequest) {
           email,
           contactNumber: 'N/A',
           position: position || 'Employee - Staff',
-          office: 'Regional Office VII',
-          division: division || 'Technical Services Division',
+          office: office || 'PhilFIDA Regional Office VII - Cebu HQ',
+          division: division || 'Administrative & Finance Division (AFD)',
           appointmentType: 'Permanent',
           employmentStatus: 'Active',
           appointmentDate: new Date().toISOString().split('T')[0],
@@ -102,14 +103,28 @@ export async function POST(req: NextRequest) {
     // --- Account Status Enforcement ---
     if (user.accountStatus === 'Pending') {
       const role = user.roleId ? await RoleService.getById(user.roleId) : null;
+      const pendingEmployee = user.employeeId ? await EmployeeService.getById(user.employeeId) : null;
+      // Return fully-shaped AuthUser so client-side setAuth() works correctly
       return NextResponse.json(
         {
           error: 'ACCOUNT_PENDING',
           message: 'Your account is pending administrator approval. You will be notified once approved.',
           user: {
-            ...user,
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            roleId: user.roleId,
             roleName: role?.roleName || 'Staff (Employee)',
             permissions: role?.permissions || [],
+            accountStatus: user.accountStatus,
+            employeeId: pendingEmployee?.id,
+            employeeName: pendingEmployee
+              ? `${pendingEmployee.firstName} ${pendingEmployee.lastName}`
+              : user.displayName || user.username,
+            office: pendingEmployee?.office,
+            division: pendingEmployee?.division,
+            position: pendingEmployee?.position,
+            photoUrl: user.photoUrl,
           },
         },
         { status: 403 }
