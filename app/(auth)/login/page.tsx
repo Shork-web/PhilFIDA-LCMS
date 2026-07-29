@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils';
 import { PHILFIDA_DIVISIONS, PHILFIDA_OFFICES } from '@/lib/constants';
 import { registrationWorkflowSchema } from '@/lib/validations/schemas';
 
+import { syncDirectFirebaseUser } from '@/lib/firebase/auth-helper';
+
 type TabType = 'login' | 'register' | 'forgot' | 'verify';
 
 const loginSchema = z.object({
@@ -54,55 +56,6 @@ function getPasswordStrength(password: string) {
   if (score <= 1) return { score: 1, label: 'Weak', color: 'bg-red-500' };
   if (score <= 3) return { score: 2, label: 'Medium', color: 'bg-amber-400' };
   return { score: 4, label: 'Strong', color: 'bg-emerald-400' };
-}
-
-// Helper: Dedicated API call for Registration
-async function callRegisterApi(params: {
-  email: string;
-  displayName?: string;
-  photoUrl?: string;
-  position?: string;
-  appointmentType?: string;
-  office?: string;
-  division?: string;
-  authProvider: 'email' | 'google' | string;
-  emailVerified?: boolean;
-}) {
-  const res = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw { 
-      code: data.error || 'REGISTRATION_ERROR', 
-      message: data.message || 'Registration failed', 
-      user: data.user 
-    };
-  }
-  return data;
-}
-
-// Helper: Login API Call
-async function callPlcmsLogin(params: {
-  email: string;
-  displayName?: string;
-  photoUrl?: string;
-  authProvider: 'email' | 'google';
-}) {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw { code: data.error, message: data.message || 'Authentication failed', user: data.user };
-  }
-  return data;
 }
 
 export default function LoginPage() {
@@ -148,8 +101,8 @@ export default function LoginPage() {
 
   // Handle generic & Vercel auth errors
   const handleAuthError = (err: any) => {
-    if (err?.code === 'DUPLICATE_ACCOUNT') {
-      toast.error(err.message || 'Account already exists. Switching to Sign In...');
+    if (err?.code === 'DUPLICATE_ACCOUNT' || err?.code === 'auth/email-already-in-use') {
+      toast.error('An account with this email address already exists. Switching to Sign In...');
       setTab('login');
       if (err?.email) loginForm.setValue('email', err.email);
       return;
@@ -167,11 +120,15 @@ export default function LoginPage() {
       toast.error('Vercel Setup Warning: Missing NEXT_PUBLIC_FIREBASE_API_KEY in Vercel Environment Variables.');
       return;
     }
+    if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found') {
+      toast.error('Invalid email/username or password. Please try again.');
+      return;
+    }
     const msg = err?.message || err?.code || 'Authentication failed';
     toast.error(msg);
   };
 
-  // ─── EMAIL / PASSWORD SIGN IN ─────────────────────────────────────────────
+  // ─── EMAIL / PASSWORD SIGN IN (DIRECT FIREBASE) ───────────────────────────
   const onLogin = async (values: LoginValues) => {
     setIsLoading(true);
     try {
@@ -188,7 +145,6 @@ export default function LoginPage() {
         const credential = await signInWithEmailAndPassword(auth, loginEmail, values.password);
         fbUser = credential.user;
       } catch (fbErr: any) {
-        // If user credential missing in Firebase Auth, attempt automatic provision or server sync
         if (fbErr?.code === 'auth/user-not-found' || fbErr?.code === 'auth/invalid-credential') {
           try {
             const newCred = await createUserWithEmailAndPassword(auth, loginEmail, values.password);
@@ -201,37 +157,26 @@ export default function LoginPage() {
         }
       }
 
-      const data = await callPlcmsLogin({
-        email: fbUser?.email || loginEmail,
-        displayName: fbUser?.displayName || undefined,
-        photoUrl: fbUser?.photoURL || undefined,
-        authProvider: 'email',
-      });
+      const { authUser, pending } = await syncDirectFirebaseUser(fbUser, { authProvider: 'email' });
 
-      if (data.pending || data?.user?.accountStatus === 'Pending') {
-        setAuth(data.user);
+      if (pending || authUser.accountStatus === 'Pending') {
+        setAuth(authUser);
         toast.info('Your account is pending administrator approval.');
         router.push('/pending-approval');
         return;
       }
 
-      setAuth(data.user, data.token);
-      toast.success(`Welcome back, ${data.user.employeeName || data.user.username}!`);
+      setAuth(authUser, `plcms_token_${authUser.id}_${Date.now()}`);
+      toast.success(`Welcome back, ${authUser.employeeName || authUser.username}!`);
       router.push('/dashboard');
     } catch (err: any) {
-      if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found') {
-        toast.error('Invalid email/username or password. Please try again.');
-      } else if (err?.code === 'auth/too-many-requests') {
-        toast.error('Too many failed attempts. Please try again later.');
-      } else {
-        handleAuthError(err);
-      }
+      handleAuthError(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ─── GOOGLE SIGN-IN ────────────────────────────────────────────────────────
+  // ─── GOOGLE SIGN-IN (DIRECT FIREBASE) ────────────────────────────────────
   const onGoogleSignIn = async () => {
     setIsLoading(true);
     try {
@@ -239,22 +184,20 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
 
-      const data = await callPlcmsLogin({
-        email: fbUser.email!,
-        displayName: fbUser.displayName || undefined,
-        photoUrl: fbUser.photoURL || undefined,
+      const { authUser, pending } = await syncDirectFirebaseUser(fbUser, {
         authProvider: 'google',
+        displayName: fbUser.displayName || undefined,
       });
 
-      if (data.pending || data?.user?.accountStatus === 'Pending') {
-        setAuth(data.user);
+      if (pending || authUser.accountStatus === 'Pending') {
+        setAuth(authUser);
         toast.info('Your account is pending administrator approval.');
         router.push('/pending-approval');
         return;
       }
 
-      setAuth(data.user, data.token);
-      toast.success(`Welcome, ${data.user.employeeName || data.user.username}!`);
+      setAuth(authUser, `plcms_token_${authUser.id}_${Date.now()}`);
+      toast.success(`Welcome, ${authUser.employeeName || authUser.username}!`);
       router.push('/dashboard');
     } catch (err: any) {
       if (err?.code === 'popup-closed-by-user' || err?.code === 'auth/popup-closed-by-user') {
@@ -267,52 +210,37 @@ export default function LoginPage() {
     }
   };
 
-  // ─── NEW FRESH EMAIL REGISTRATION WORKFLOW ───────────────────────────────
+  // ─── EMAIL REGISTRATION (DIRECT FIREBASE) ─────────────────────────────────
   const onRegister = async (values: RegisterValues) => {
     setIsLoading(true);
     try {
       if (!auth) throw new Error('Firebase not initialized');
 
-      // Step 1: Create user in Firebase Authentication
       const credential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       await updateProfile(credential.user, { displayName: values.displayName });
 
-      // Step 2: Dispatch Firebase Email Verification Link
       try {
         await sendEmailVerification(credential.user);
       } catch (e) {
-        console.warn('Email verification send notice:', e);
+        console.warn('Email verification notice:', e);
       }
 
-      // Step 3: Register in PLCMS Cloud Engine (Pending Admin Approval)
-      const data = await callRegisterApi({
-        email: values.email,
+      const { authUser } = await syncDirectFirebaseUser(credential.user, {
         displayName: values.displayName,
         position: values.position,
         appointmentType: values.appointmentType,
         office: values.office,
         division: values.division,
         authProvider: 'email',
-        emailVerified: false,
       });
 
       setVerificationEmail(values.email);
-      if (data?.user) setAuth(data.user);
-
-      // Step 4: Display Email Verification Screen
+      setAuth(authUser);
       setTab('verify');
       setResendCooldown(60);
       toast.success('Verification link sent! Please check your email inbox.');
     } catch (err: any) {
-      if (err?.code === 'auth/email-already-in-use') {
-        toast.error('An account with this email address already exists. Switching to Sign In...');
-        loginForm.setValue('email', values.email);
-        setTab('login');
-      } else if (err?.code === 'auth/weak-password') {
-        toast.error('Password does not meet strength requirements.');
-      } else {
-        handleAuthError(err);
-      }
+      handleAuthError(err);
     } finally {
       setIsLoading(false);
     }
