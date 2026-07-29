@@ -323,6 +323,17 @@ class InMemoryDatabase {
     }
   }
 
+  private loadPromise: Promise<void> | null = null;
+
+  public async ensureLoaded(): Promise<void> {
+    if (!this.loadPromise) {
+      this.loadPromise = this.loadFromFirestore().catch(err => {
+        console.warn('[store-db] Firestore initial load notice:', err);
+      });
+    }
+    await this.loadPromise;
+  }
+
   private init() {
     if (this.initialized) return;
 
@@ -332,8 +343,8 @@ class InMemoryDatabase {
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
 
-    // 2. Connect to Firebase Cloud Firestore for real-time live data sync
-    this.loadFromFirestore().catch(() => {});
+    // 2. Trigger Firestore initial sync
+    this.ensureLoaded().catch(() => {});
 
     this.initialized = true;
   }
@@ -365,10 +376,12 @@ class InMemoryDatabase {
 
   // --- EMPLOYEES ---
   async getEmployees(): Promise<Employee[]> {
+    await this.ensureLoaded();
     return Array.from(this.employees.values());
   }
 
   async getEmployeeById(id: string): Promise<Employee | null> {
+    await this.ensureLoaded();
     return this.employees.get(id) || null;
   }
 
@@ -438,6 +451,7 @@ class InMemoryDatabase {
 
   // --- USERS ---
   async getUsers(): Promise<User[]> {
+    await this.ensureLoaded();
     const list = Array.from(this.users.values()).filter((u): u is User => Boolean(u && typeof u === 'object' && u.id));
     return list.map(u => ({
       ...u,
@@ -447,6 +461,7 @@ class InMemoryDatabase {
   }
 
   async getUserById(id: string): Promise<User | null> {
+    await this.ensureLoaded();
     const u = this.users.get(id);
     if (!u || typeof u !== 'object' || !u.id) return null;
     return {
@@ -458,6 +473,7 @@ class InMemoryDatabase {
 
   async getUserByEmail(email: string): Promise<User | null> {
     if (!email) return null;
+    await this.ensureLoaded();
     const emailLower = email.toLowerCase();
     const u = Array.from(this.users.values()).find(
       x => x && typeof x === 'object' && ((x.email && x.email.toLowerCase() === emailLower) || (x.username && x.username.toLowerCase() === emailLower))
