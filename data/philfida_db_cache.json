@@ -1,0 +1,20 @@
+{
+  "employees": [],
+  "users": [
+    {
+      "id": "user_it_admin_iverson",
+      "username": "iversonwork039",
+      "email": "iversonwork039@gmail.com",
+      "displayName": "IT / MIS Administrator",
+      "roleId": "role_superadmin",
+      "accountStatus": "Active",
+      "isActive": true,
+      "authProvider": "google",
+      "createdAt": "2026-01-01T08:00:00.000Z",
+      "updatedAt": "2026-01-01T08:00:00.000Z"
+    }
+  ],
+  "leaveBalances": [],
+  "leaveTransactions": [],
+  "monthlyAccrualLogs": []
+}

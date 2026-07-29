@@ -6,7 +6,9 @@ import { getFirestore } from 'firebase-admin/firestore';
 export const hasFirebaseAdminConfigured = Boolean(
   process.env.FIREBASE_PROJECT_ID &&
   process.env.FIREBASE_CLIENT_EMAIL &&
-  process.env.FIREBASE_PRIVATE_KEY
+  process.env.FIREBASE_PRIVATE_KEY &&
+  !process.env.FIREBASE_PRIVATE_KEY.includes('YOUR_PRIVATE_KEY_HERE') &&
+  process.env.FIREBASE_PRIVATE_KEY.includes('BEGIN PRIVATE KEY')
 );
 
 let adminAuth: ReturnType<typeof getAuth> | null = null;

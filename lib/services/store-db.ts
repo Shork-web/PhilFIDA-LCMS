@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const DB_FILE_PATH = path.join(process.cwd(), '.next', 'philfida_db_cache.json');
+const DB_FILE_PATH = path.join(process.cwd(), 'data', 'philfida_db_cache.json');
 import { 
   Employee, 
   User, 
@@ -37,7 +37,62 @@ import {
   DEFAULT_SYSTEM_SETTINGS
 } from '@/lib/constants';
 import { generateId } from '@/lib/utils';
+import { db } from '@/lib/firebase/config';
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
 
+import { adminDb } from '@/lib/firebase/admin';
+
+// --- FIRESTORE PERSISTENCE HELPERS ---
+async function syncToFirestore(collectionName: string, docId: string, data: any) {
+  const cleanData = JSON.parse(JSON.stringify(data));
+  delete cleanData.employee;
+  delete cleanData.role;
+  delete cleanData.leaveType;
+  delete cleanData.user;
+  delete cleanData.approver;
+
+  if (adminDb) {
+    try {
+      await adminDb.collection(collectionName).doc(docId).set(cleanData, { merge: true });
+      return;
+    } catch (err) {
+      console.warn(`[Admin Firestore Sync] Failed ${collectionName}/${docId}:`, err);
+    }
+  }
+
+  if (db) {
+    try {
+      await setDoc(doc(db, collectionName, docId), cleanData, { merge: true });
+    } catch (err) {
+      // Silently fall back to in-memory + local disk persistence
+    }
+  }
+}
+
+async function removeFromFirestore(collectionName: string, docId: string) {
+  if (adminDb) {
+    try {
+      await adminDb.collection(collectionName).doc(docId).delete();
+      return;
+    } catch (err) {
+      console.warn(`[Admin Firestore Delete] Failed ${collectionName}/${docId}:`, err);
+    }
+  }
+
+  if (db) {
+    try {
+      await deleteDoc(doc(db, collectionName, docId));
+    } catch (err) {
+      // Silently fall back
+    }
+  }
+}
 
 // --- MINIMUM SYSTEM BOOTSTRAP DATA ---
 
@@ -203,6 +258,125 @@ class InMemoryDatabase {
     }
   }
 
+  private async loadFromFirestore() {
+    if (!adminDb && !db) return;
+
+    const getCollectionData = async (collName: string): Promise<any[]> => {
+      if (adminDb) {
+        try {
+          const snap = await adminDb.collection(collName).get();
+          if (!snap.empty) {
+            return snap.docs.map(d => d.data());
+          }
+        } catch {
+          // ignore admin error
+        }
+      }
+      if (db) {
+        try {
+          const snap = await getDocs(collection(db, collName));
+          if (!snap.empty) {
+            return snap.docs.map(d => d.data());
+          }
+        } catch {
+          // ignore client error
+        }
+      }
+      return [];
+    };
+
+    try {
+      // 1. Roles
+      const rolesData = await getCollectionData('roles');
+      if (rolesData.length > 0) {
+        rolesData.forEach(item => { if (item?.id) this.roles.set(item.id, item); });
+      } else {
+        INITIAL_ROLES.forEach(r => syncToFirestore('roles', r.id, r));
+      }
+
+      // 2. Leave Types
+      const ltData = await getCollectionData('leaveTypes');
+      if (ltData.length > 0) {
+        ltData.forEach(item => { if (item?.id) this.leaveTypes.set(item.id, item); });
+      } else {
+        INITIAL_LEAVE_TYPES_LIST.forEach(lt => syncToFirestore('leaveTypes', lt.id, lt));
+      }
+
+      // 3. Holidays
+      const holData = await getCollectionData('holidays');
+      if (holData.length > 0) {
+        holData.forEach(item => { if (item?.id) this.holidays.set(item.id, item); });
+      } else {
+        INITIAL_HOLIDAYS.forEach(h => syncToFirestore('holidays', h.id, h));
+      }
+
+      // 4. Users
+      const usersData = await getCollectionData('users');
+      if (usersData.length > 0) {
+        usersData.forEach(item => { if (item?.id) this.users.set(item.id, item); });
+      } else {
+        INITIAL_SYSTEM_USERS.forEach(u => syncToFirestore('users', u.id, u));
+      }
+
+      // 5. Employees
+      const empData = await getCollectionData('employees');
+      empData.forEach(item => { if (item?.id) this.employees.set(item.id, item); });
+
+      // 6. Leave Balances
+      const balData = await getCollectionData('leaveBalances');
+      balData.forEach(item => { if (item?.id) this.leaveBalances.set(item.id, item); });
+
+      // 7. Leave Transactions
+      const txData = await getCollectionData('leaveTransactions');
+      txData.forEach(item => { if (item?.id) this.leaveTransactions.set(item.id, item); });
+
+      // 8. Leave Applications
+      const appData = await getCollectionData('leaveApplications');
+      appData.forEach(item => { if (item?.id) this.leaveApplications.set(item.id, item); });
+
+      // 9. CTO Requests
+      const ctoData = await getCollectionData('ctoRequests');
+      ctoData.forEach(item => { if (item?.id) this.ctoRequests.set(item.id, item); });
+
+      // 10. Leave Adjustments
+      const adjData = await getCollectionData('leaveAdjustments');
+      adjData.forEach(item => { if (item?.id) this.leaveAdjustments.set(item.id, item); });
+
+      // 11. Audit Logs
+      const auditData = await getCollectionData('auditLogs');
+      auditData.forEach(item => { if (item?.id) this.auditLogs.set(item.id, item); });
+
+      // 12. Notifications
+      const notifData = await getCollectionData('notifications');
+      notifData.forEach(item => { if (item?.id) this.notifications.set(item.id, item); });
+
+      // 13. Monthly Accrual Logs
+      const accrualData = await getCollectionData('monthlyAccrualLogs');
+      accrualData.forEach(item => { if (item?.id) this.monthlyAccrualLogs.set(item.id, item); });
+
+      // 14. Generated Reports
+      const reportData = await getCollectionData('generatedReports');
+      reportData.forEach(item => { if (item?.id) this.generatedReports.set(item.id, item); });
+
+      // 15. Documents
+      const docData = await getCollectionData('documents');
+      docData.forEach(item => { if (item?.id) this.documents.set(item.id, item); });
+
+      // 16. System Settings
+      const settingsData = await getCollectionData('systemSettings');
+      settingsData.forEach(item => {
+        if (item?.id === 'default') {
+          this.systemSettings = { ...this.systemSettings, ...item };
+        }
+      });
+
+      // Save merged state to local disk cache
+      this.saveToDisk();
+    } catch {
+      // Fallback silently to disk cache
+    }
+  }
+
   private init() {
     if (this.initialized) return;
 
@@ -215,6 +389,9 @@ class InMemoryDatabase {
 
     // 2. Restore persisted user/employee data from disk (registered users survive restarts)
     this.loadFromDisk();
+
+    // 3. Connect to Firebase Cloud Firestore for real-time live data sync
+    this.loadFromFirestore();
 
     this.initialized = true;
   }
@@ -265,17 +442,20 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.employees.set(id, newEmp);
+    syncToFirestore('employees', id, newEmp);
 
     // Initialize default leave balances for new employee
     this.leaveTypes.forEach((lt) => {
       const balanceId = `lb_${id}_${lt.id}`;
-      this.leaveBalances.set(balanceId, {
+      const lbRecord: LeaveBalance = {
         id: balanceId,
         employeeId: id,
         leaveTypeId: lt.id,
         balance: 0,
         lastUpdated: now,
-      });
+      };
+      this.leaveBalances.set(balanceId, lbRecord);
+      syncToFirestore('leaveBalances', balanceId, lbRecord);
     });
 
     this.saveToDisk();
@@ -292,6 +472,7 @@ class InMemoryDatabase {
     };
     this.employees.set(id, updated);
     this.saveToDisk();
+    syncToFirestore('employees', id, updated);
     return updated;
   }
 
@@ -343,6 +524,7 @@ class InMemoryDatabase {
     };
     this.users.set(id, newUser);
     this.saveToDisk();
+    syncToFirestore('users', id, newUser);
     return {
       ...newUser,
       employee: newUser.employeeId ? this.employees.get(newUser.employeeId) : undefined,
@@ -360,6 +542,7 @@ class InMemoryDatabase {
     };
     this.users.set(id, updated);
     this.saveToDisk();
+    syncToFirestore('users', id, updated);
     return {
       ...updated,
       employee: updated.employeeId ? this.employees.get(updated.employeeId) : undefined,
@@ -376,6 +559,7 @@ class InMemoryDatabase {
     const success = this.users.delete(id);
     if (success) {
       this.saveToDisk();
+      removeFromFirestore('users', id);
     }
     return success;
   }
@@ -399,6 +583,7 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.roles.set(id, newRole);
+    syncToFirestore('roles', id, newRole);
     return newRole;
   }
 
@@ -411,13 +596,18 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.roles.set(id, updated);
+    syncToFirestore('roles', id, updated);
     return updated;
   }
 
   async deleteRole(id: string): Promise<boolean> {
     const existing = this.roles.get(id);
     if (!existing || existing.isSystemRole) return false;
-    return this.roles.delete(id);
+    const deleted = this.roles.delete(id);
+    if (deleted) {
+      removeFromFirestore('roles', id);
+    }
+    return deleted;
   }
 
   // --- LEAVE TYPES ---
@@ -439,6 +629,7 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.leaveTypes.set(id, newLt);
+    syncToFirestore('leaveTypes', id, newLt);
     return newLt;
   }
 
@@ -451,6 +642,7 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.leaveTypes.set(id, updated);
+    syncToFirestore('leaveTypes', id, updated);
     return updated;
   }
 
@@ -491,6 +683,7 @@ class InMemoryDatabase {
       lastUpdated: now,
     };
     this.leaveBalances.set(id, newBalance);
+    syncToFirestore('leaveBalances', id, newBalance);
     return {
       ...newBalance,
       leaveType: this.leaveTypes.get(data.leaveTypeId),
@@ -512,6 +705,7 @@ class InMemoryDatabase {
       lastUpdated: now,
     };
     this.leaveBalances.set(id, updated);
+    syncToFirestore('leaveBalances', id, updated);
     return {
       ...updated,
       leaveType: this.leaveTypes.get(leaveTypeId),
@@ -583,6 +777,7 @@ class InMemoryDatabase {
     };
 
     this.leaveTransactions.set(txId, transaction);
+    syncToFirestore('leaveTransactions', txId, transaction);
 
     // Update Leave Balance Computed Value
     const updatedBalance: LeaveBalance = {
@@ -593,6 +788,7 @@ class InMemoryDatabase {
       lastUpdated: now,
     };
     this.leaveBalances.set(balanceId, updatedBalance);
+    syncToFirestore('leaveBalances', balanceId, updatedBalance);
     this.saveToDisk();
 
     return {
@@ -709,6 +905,7 @@ class InMemoryDatabase {
     };
 
     this.leaveApplications.set(id, newApp);
+    syncToFirestore('leaveApplications', id, newApp);
 
     return {
       ...newApp,
@@ -758,6 +955,7 @@ class InMemoryDatabase {
     };
 
     this.leaveApplications.set(id, updated);
+    syncToFirestore('leaveApplications', id, updated);
 
     return {
       ...updated,
@@ -813,6 +1011,7 @@ class InMemoryDatabase {
     };
 
     this.ctoRequests.set(id, newCTO);
+    syncToFirestore('ctoRequests', id, newCTO);
 
     return {
       ...newCTO,
@@ -864,6 +1063,7 @@ class InMemoryDatabase {
     };
 
     this.ctoRequests.set(id, updated);
+    syncToFirestore('ctoRequests', id, updated);
 
     return {
       ...updated,
@@ -914,6 +1114,7 @@ class InMemoryDatabase {
     };
 
     this.leaveAdjustments.set(id, newAdj);
+    syncToFirestore('leaveAdjustments', id, newAdj);
 
     return {
       ...newAdj,
@@ -952,6 +1153,7 @@ class InMemoryDatabase {
     };
 
     this.auditLogs.set(id, newLog);
+    syncToFirestore('auditLogs', id, newLog);
 
     return {
       ...newLog,
@@ -970,6 +1172,7 @@ class InMemoryDatabase {
       ...data,
       updatedAt: new Date().toISOString(),
     };
+    syncToFirestore('systemSettings', 'default', this.systemSettings);
     return { ...this.systemSettings };
   }
 
@@ -993,6 +1196,7 @@ class InMemoryDatabase {
       createdAt: now,
     };
     this.holidays.set(id, newHoliday);
+    syncToFirestore('holidays', id, newHoliday);
     return newHoliday;
   }
 
@@ -1004,11 +1208,16 @@ class InMemoryDatabase {
       ...data,
     };
     this.holidays.set(id, updated);
+    syncToFirestore('holidays', id, updated);
     return updated;
   }
 
   async deleteHoliday(id: string): Promise<boolean> {
-    return this.holidays.delete(id);
+    const deleted = this.holidays.delete(id);
+    if (deleted) {
+      removeFromFirestore('holidays', id);
+    }
+    return deleted;
   }
 
   // --- NOTIFICATIONS ---
@@ -1031,20 +1240,25 @@ class InMemoryDatabase {
       createdAt: now,
     };
     this.notifications.set(id, newNotif);
+    syncToFirestore('notifications', id, newNotif);
     return newNotif;
   }
 
   async markNotificationAsRead(id: string): Promise<boolean> {
     const notif = this.notifications.get(id);
     if (!notif) return false;
-    this.notifications.set(id, { ...notif, isRead: true });
+    const updated = { ...notif, isRead: true };
+    this.notifications.set(id, updated);
+    syncToFirestore('notifications', id, updated);
     return true;
   }
 
   async markAllNotificationsAsRead(userId: string): Promise<boolean> {
     this.notifications.forEach((notif, id) => {
       if (notif.userId === userId || userId === 'all') {
-        this.notifications.set(id, { ...notif, isRead: true });
+        const updated = { ...notif, isRead: true };
+        this.notifications.set(id, updated);
+        syncToFirestore('notifications', id, updated);
       }
     });
     return true;
@@ -1079,6 +1293,7 @@ class InMemoryDatabase {
     };
     this.monthlyAccrualLogs.set(id, newLog);
     this.saveToDisk();
+    syncToFirestore('monthlyAccrualLogs', id, newLog);
     return {
       ...newLog,
       employee: this.employees.get(data.employeeId),
@@ -1101,6 +1316,7 @@ class InMemoryDatabase {
       dateGenerated: now,
     };
     this.generatedReports.set(id, report);
+    syncToFirestore('generatedReports', id, report);
     return report;
   }
 
@@ -1130,13 +1346,16 @@ class InMemoryDatabase {
       createdAt: now,
     };
     this.documents.set(id, doc);
+    syncToFirestore('documents', id, doc);
     return doc;
   }
 
   async softDeleteDocument(id: string): Promise<boolean> {
     const doc = this.documents.get(id);
     if (!doc) return false;
-    this.documents.set(id, { ...doc, isDeleted: true });
+    const updated = { ...doc, isDeleted: true };
+    this.documents.set(id, updated);
+    syncToFirestore('documents', id, updated);
     return true;
   }
 
@@ -1170,6 +1389,7 @@ class InMemoryDatabase {
         bal.balance = calculatedBalance;
         bal.lastUpdated = new Date().toISOString();
         this.leaveBalances.set(bal.id, bal);
+        syncToFirestore('leaveBalances', bal.id, bal);
       }
       reconciledCount++;
     }
