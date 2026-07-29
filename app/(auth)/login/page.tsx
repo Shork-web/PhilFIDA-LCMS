@@ -181,8 +181,6 @@ export default function LoginPage() {
         toast.error('An account with this email already exists. Please sign in instead.');
       } else if (err?.code === 'auth/weak-password') {
         toast.error('Password is too weak. Use at least 8 characters with numbers and letters.');
-      } else if (err?.code === 'ACCOUNT_PENDING') {
-        router.push('/pending-approval');
       } else {
         handleAuthError(err);
       }

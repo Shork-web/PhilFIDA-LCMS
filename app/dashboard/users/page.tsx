@@ -61,8 +61,8 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const [uRes, eRes, rRes] = await Promise.all([
-        fetch('/api/users'),
-        fetch('/api/employees'),
+        fetch(`/api/users?t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/employees?t=${Date.now()}`, { cache: 'no-store' }),
         fetch('/api/roles'),
       ]);
       const [uData, eData, rData] = await Promise.all([
@@ -77,6 +77,22 @@ export default function UsersPage() {
       toast.error('Failed to load user management data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveUser = async (u: User) => {
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Approval failed');
+      toast.success(`Account approved for ${u.displayName || u.username}!`);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to approve account');
     }
   };
 
@@ -290,11 +306,25 @@ export default function UsersPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={u.isActive ? 'success' : 'danger'}>
-                        {u.isActive ? 'Active' : 'Deactivated'}
+                      <Badge variant={
+                        u.accountStatus === 'Pending' ? 'warning' :
+                        u.accountStatus === 'Active' || u.isActive ? 'success' :
+                        u.accountStatus === 'Disabled' ? 'neutral' : 'danger'
+                      }>
+                        {u.accountStatus || (u.isActive ? 'Active' : 'Disabled')}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-right space-x-1">
+                      {u.accountStatus === 'Pending' && (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleApproveUser(u)}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs"
+                        >
+                          <UserCheck className="w-3.5 h-3.5 mr-1" /> Approve
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"

@@ -39,9 +39,10 @@ export default function DashboardPage() {
   const [myBalances, setMyBalances] = useState<LeaveBalance[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<LeaveTransaction[]>([]);
   const [recentApplications, setRecentApplications] = useState<LeaveApplication[]>([]);
+  const [pendingUsersCount, setPendingUsersCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  const isAdminOrHR = user?.roleName === 'Super Admin' || user?.roleName === 'HR Administrator';
+  const isAdminOrHR = user?.roleName === 'Super Admin' || user?.roleName === 'HR Administrator' || user?.roleId === 'role_superadmin' || user?.roleId === 'role_hradmin';
 
   useEffect(() => {
     async function loadDashboard() {
@@ -54,6 +55,7 @@ export default function DashboardPage() {
 
         if (isAdminOrHR) {
           promises.push(fetch('/api/dashboard/stats'));
+          promises.push(fetch(`/api/users?t=${Date.now()}`, { cache: 'no-store' }));
         }
 
         if (user?.employeeId) {
@@ -75,6 +77,14 @@ export default function DashboardPage() {
         if (isAdminOrHR && results[2]) {
           const statsData = await results[2].json();
           if (statsData.success) setStats(statsData.data);
+        }
+
+        if (isAdminOrHR && results[3]) {
+          const usersData = await results[3].json();
+          if (usersData.success && Array.isArray(usersData.data)) {
+            const pending = usersData.data.filter((u: any) => u.accountStatus === 'Pending');
+            setPendingUsersCount(pending.length);
+          }
         }
 
         const balRes = results.find(r => r.url?.includes('leave-balances'));
@@ -109,7 +119,35 @@ export default function DashboardPage() {
   const pendingAppsCount = recentApplications.filter(a => a.status === 'Pending').length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Pending Account Approvals Notice Banner for Admins */}
+      {isAdminOrHR && pendingUsersCount > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5 text-amber-500" />
+            </div>
+            <div>
+              <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Pending User Registration Notice</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-slate-950">
+                  {pendingUsersCount} New
+                </span>
+              </p>
+              <p className="text-xs text-slate-600 dark:text-amber-300/90 mt-0.5">
+                There {pendingUsersCount === 1 ? 'is 1 new user account' : `are ${pendingUsersCount} new user accounts`} awaiting administrator verification and role approval.
+              </p>
+            </div>
+          </div>
+          <Link href="/dashboard/account-management">
+            <Button size="sm" variant="primary" className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs whitespace-nowrap shadow-md">
+              Review & Approve ({pendingUsersCount})
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {/* Welcome Agency Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0F2C59] via-[#1B4D3E] to-[#0A1F3F] p-6 sm:p-8 text-white shadow-xl">
         <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />

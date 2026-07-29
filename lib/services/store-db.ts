@@ -1,4 +1,8 @@
 // PhilFIDA Data Store Engine with Dual Mode (Firestore & Out-of-the-Box Local Seed Store)
+import fs from 'fs';
+import path from 'path';
+
+const DB_FILE_PATH = path.join(process.cwd(), '.next', 'philfida_users_cache.json');
 import { 
   Employee, 
   User, 
@@ -137,6 +141,18 @@ export const INITIAL_SYSTEM_USERS: User[] = [
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-01T08:00:00.000Z',
   },
+  {
+    id: 'user_sample_pending',
+    username: 'new.staff',
+    email: 'new.staff@philfida.da.gov.ph',
+    displayName: 'New Staff (Pending Verification)',
+    roleId: 'role_employee',
+    accountStatus: 'Pending',
+    isActive: false,
+    authProvider: 'email',
+    createdAt: '2026-01-15T09:30:00.000Z',
+    updatedAt: '2026-01-15T09:30:00.000Z',
+  },
 ];
 
 class InMemoryDatabase {
@@ -162,6 +178,33 @@ class InMemoryDatabase {
     this.init();
   }
 
+  private saveUsersToDisk() {
+    try {
+      const list = Array.from(this.users.values());
+      const dir = path.dirname(DB_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(list, null, 2), 'utf8');
+    } catch {
+      // ignore
+    }
+  }
+
+  private loadUsersFromDisk() {
+    try {
+      if (fs.existsSync(DB_FILE_PATH)) {
+        const raw = fs.readFileSync(DB_FILE_PATH, 'utf8');
+        const savedUsers: User[] = JSON.parse(raw);
+        if (Array.isArray(savedUsers) && savedUsers.length > 0) {
+          savedUsers.forEach(u => this.users.set(u.id, { ...u }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   private init() {
     if (this.initialized) return;
 
@@ -170,6 +213,9 @@ class InMemoryDatabase {
     INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
+
+    // Restore disk persisted users
+    this.loadUsersFromDisk();
 
     this.initialized = true;
   }
@@ -269,6 +315,7 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.users.set(id, newUser);
+    this.saveUsersToDisk();
     return {
       ...newUser,
       employee: newUser.employeeId ? this.employees.get(newUser.employeeId) : undefined,
@@ -285,6 +332,7 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.users.set(id, updated);
+    this.saveUsersToDisk();
     return {
       ...updated,
       employee: updated.employeeId ? this.employees.get(updated.employeeId) : undefined,
