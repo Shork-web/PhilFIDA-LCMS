@@ -116,6 +116,43 @@ export const INITIAL_HOLIDAYS: Holiday[] = [
   { id: 'hol_11', holidayName: 'Rizal Day', holidayType: 'Regular', date: '2026-12-30', isRecurring: true, createdAt: '2026-01-01T08:00:00.000Z' },
 ];
 
+export const INITIAL_EMPLOYEES: Employee[] = [
+  {
+    id: 'emp_03',
+    employeeNumber: 'EMP-2026-003',
+    firstName: 'Juan',
+    lastName: 'Dela Cruz',
+    email: 'juan.delacruz@philfida.da.gov.ph',
+    contactNumber: '09181112233',
+    position: 'Fibre Development Officer II',
+    office: 'Regional Office VII',
+    division: 'Fibre Extension Services',
+    appointmentType: 'Permanent',
+    employmentStatus: 'Active',
+    appointmentDate: '2025-06-15',
+    isActive: true,
+    createdAt: '2026-01-01T08:00:00.000Z',
+    updatedAt: '2026-01-01T08:00:00.000Z',
+  },
+  {
+    id: 'emp_04',
+    employeeNumber: 'EMP-2026-004',
+    firstName: 'Maria',
+    lastName: 'Santos',
+    email: 'maria.santos@philfida.da.gov.ph',
+    contactNumber: '09194445566',
+    position: 'Administrative Assistant III',
+    office: 'Regional Office VII',
+    division: 'Administrative & Finance Division',
+    appointmentType: 'Permanent',
+    employmentStatus: 'Active',
+    appointmentDate: '2024-03-10',
+    isActive: true,
+    createdAt: '2026-01-01T08:00:00.000Z',
+    updatedAt: '2026-01-01T08:00:00.000Z',
+  },
+];
+
 export const INITIAL_SYSTEM_USERS: User[] = [
   {
     id: 'user_it_admin_iverson',
@@ -178,26 +215,46 @@ class InMemoryDatabase {
     this.init();
   }
 
-  private saveUsersToDisk() {
+  private saveToDisk() {
     try {
-      const list = Array.from(this.users.values());
+      const data = {
+        employees: Array.from(this.employees.values()),
+        users: Array.from(this.users.values()),
+        leaveBalances: Array.from(this.leaveBalances.values()),
+        leaveTransactions: Array.from(this.leaveTransactions.values()),
+        monthlyAccrualLogs: Array.from(this.monthlyAccrualLogs.values()),
+      };
       const dir = path.dirname(DB_FILE_PATH);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(list, null, 2), 'utf8');
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf8');
     } catch {
       // ignore
     }
   }
 
-  private loadUsersFromDisk() {
+  private loadFromDisk() {
     try {
       if (fs.existsSync(DB_FILE_PATH)) {
         const raw = fs.readFileSync(DB_FILE_PATH, 'utf8');
-        const savedUsers: User[] = JSON.parse(raw);
-        if (Array.isArray(savedUsers) && savedUsers.length > 0) {
-          savedUsers.forEach(u => this.users.set(u.id, { ...u }));
+        const data = JSON.parse(raw);
+        if (data) {
+          if (Array.isArray(data.employees) && data.employees.length > 0) {
+            data.employees.forEach((e: Employee) => this.employees.set(e.id, { ...e }));
+          }
+          if (Array.isArray(data.users) && data.users.length > 0) {
+            data.users.forEach((u: User) => this.users.set(u.id, { ...u }));
+          }
+          if (Array.isArray(data.leaveBalances) && data.leaveBalances.length > 0) {
+            data.leaveBalances.forEach((b: LeaveBalance) => this.leaveBalances.set(b.id, { ...b }));
+          }
+          if (Array.isArray(data.leaveTransactions) && data.leaveTransactions.length > 0) {
+            data.leaveTransactions.forEach((t: LeaveTransaction) => this.leaveTransactions.set(t.id, { ...t }));
+          }
+          if (Array.isArray(data.monthlyAccrualLogs) && data.monthlyAccrualLogs.length > 0) {
+            data.monthlyAccrualLogs.forEach((l: MonthlyAccrualLog) => this.monthlyAccrualLogs.set(l.id, { ...l }));
+          }
         }
       }
     } catch {
@@ -212,10 +269,25 @@ class InMemoryDatabase {
     INITIAL_ROLES.forEach(r => this.roles.set(r.id, { ...r }));
     INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
+    INITIAL_EMPLOYEES.forEach(e => {
+      this.employees.set(e.id, { ...e });
+      INITIAL_LEAVE_TYPES_LIST.forEach(lt => {
+        const balanceId = `lb_${e.id}_${lt.id}`;
+        if (!this.leaveBalances.has(balanceId)) {
+          this.leaveBalances.set(balanceId, {
+            id: balanceId,
+            employeeId: e.id,
+            leaveTypeId: lt.id,
+            balance: 15.0,
+            lastUpdated: '2026-01-01T08:00:00.000Z',
+          });
+        }
+      });
+    });
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
 
-    // Restore disk persisted users
-    this.loadUsersFromDisk();
+    // Restore disk persisted state
+    this.loadFromDisk();
 
     this.initialized = true;
   }
@@ -315,7 +387,7 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.users.set(id, newUser);
-    this.saveUsersToDisk();
+    this.saveToDisk();
     return {
       ...newUser,
       employee: newUser.employeeId ? this.employees.get(newUser.employeeId) : undefined,
@@ -332,7 +404,7 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.users.set(id, updated);
-    this.saveUsersToDisk();
+    this.saveToDisk();
     return {
       ...updated,
       employee: updated.employeeId ? this.employees.get(updated.employeeId) : undefined,
@@ -553,6 +625,7 @@ class InMemoryDatabase {
       lastUpdated: now,
     };
     this.leaveBalances.set(balanceId, updatedBalance);
+    this.saveToDisk();
 
     return {
       ...transaction,
@@ -1037,6 +1110,7 @@ class InMemoryDatabase {
       processedAt: now,
     };
     this.monthlyAccrualLogs.set(id, newLog);
+    this.saveToDisk();
     return {
       ...newLog,
       employee: this.employees.get(data.employeeId),

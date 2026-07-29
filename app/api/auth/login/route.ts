@@ -40,10 +40,33 @@ export async function POST(req: NextRequest) {
         photoUrl,
       });
 
-      // Try linking with an existing Employee record if emails match
+      // Automatically create matching Employee record for non-superadmin accounts so they reflect in the Employee Directory
+      const isSuperAdmin = email.toLowerCase() === 'iversonwork039@gmail.com' || email.toLowerCase() === 'admin@philfida.da.gov.ph' || payload.roleId === 'role_superadmin';
+      
       const allEmps = await EmployeeService.getAll();
-      const matchingEmp = allEmps.find(e => e.email.toLowerCase() === email.toLowerCase());
-      if (matchingEmp) {
+      let matchingEmp = allEmps.find(e => e.email.toLowerCase() === email.toLowerCase());
+
+      if (!matchingEmp && !isSuperAdmin) {
+        const nameParts = (displayName || email.split('@')[0]).trim().split(' ');
+        const firstName = nameParts[0] || 'Employee';
+        const lastName = nameParts.slice(1).join(' ') || 'Staff';
+        matchingEmp = await EmployeeService.create({
+          employeeNumber: `EMP-${Math.floor(100000 + Math.random() * 900000)}`,
+          firstName,
+          lastName,
+          email,
+          contactNumber: 'N/A',
+          position: 'Employee - Staff',
+          office: 'Regional Office VII',
+          division: 'Technical Services Division',
+          appointmentType: 'Permanent',
+          employmentStatus: 'Active',
+          appointmentDate: new Date().toISOString().split('T')[0],
+          isActive: true,
+        });
+      }
+
+      if (matchingEmp && !isSuperAdmin) {
         payload.employeeId = matchingEmp.id;
       }
 

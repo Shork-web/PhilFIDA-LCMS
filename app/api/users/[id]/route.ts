@@ -49,9 +49,11 @@ export async function PATCH(
 
     // ─── Account Management Actions ──────────────────────────────────────────
     if (action === 'approve') {
-      let linkedEmployeeId = updateData.employeeId || existingUser.employeeId;
+      const targetRoleId = updateData.roleId || existingUser.roleId;
+      const isSuperAdmin = targetRoleId === 'role_superadmin' || existingUser.email.toLowerCase() === 'iversonwork039@gmail.com' || existingUser.email.toLowerCase() === 'admin@philfida.da.gov.ph';
+      let linkedEmployeeId = isSuperAdmin ? undefined : (updateData.employeeId || existingUser.employeeId);
 
-      if (!linkedEmployeeId) {
+      if (!isSuperAdmin && !linkedEmployeeId) {
         const { EmployeeService } = await import('@/lib/services/employee-service');
         const allEmps = await EmployeeService.getAll();
         let matchingEmp = allEmps.find(e => e.email.toLowerCase() === existingUser.email.toLowerCase());
@@ -66,9 +68,9 @@ export async function PATCH(
             lastName,
             email: existingUser.email,
             contactNumber: 'N/A',
-            position: 'Employee',
-            office: 'Central Office',
-            division: 'Administrative Division',
+            position: 'Employee - Staff',
+            office: 'Regional Office VII',
+            division: 'Technical Services Division',
             appointmentType: 'Permanent',
             employmentStatus: 'Active',
             appointmentDate: new Date().toISOString().split('T')[0],
@@ -81,7 +83,7 @@ export async function PATCH(
       const updated = await UserService.update(id, {
         accountStatus: 'Active',
         isActive: true,
-        employeeId: linkedEmployeeId,
+        ...(linkedEmployeeId ? { employeeId: linkedEmployeeId } : {}),
         ...(updateData.roleId ? { roleId: updateData.roleId } : {}),
       });
 

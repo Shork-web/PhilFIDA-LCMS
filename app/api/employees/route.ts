@@ -12,6 +12,10 @@ export async function GET(req: NextRequest) {
 
     let employees = await EmployeeService.getAll();
 
+    // Exclude Super Admin system accounts from Employee Directory
+    const superAdminEmails = new Set(['iversonwork039@gmail.com', 'admin@philfida.da.gov.ph']);
+    employees = employees.filter(e => !superAdminEmails.has(e.email.toLowerCase()));
+
     if (search) {
       const q = search.toLowerCase();
       employees = employees.filter(
