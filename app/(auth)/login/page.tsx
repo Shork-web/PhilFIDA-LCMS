@@ -146,7 +146,7 @@ export default function LoginPage() {
     }
   }, [resendCooldown]);
 
-  // Handle generic error
+  // Handle generic & Vercel auth errors
   const handleAuthError = (err: any) => {
     if (err?.code === 'DUPLICATE_ACCOUNT') {
       toast.error(err.message || 'Account already exists. Switching to Sign In...');
@@ -157,6 +157,14 @@ export default function LoginPage() {
     if (err?.code === 'ACCOUNT_PENDING') {
       if (err.user) setAuth(err.user);
       router.push('/pending-approval');
+      return;
+    }
+    if (err?.code === 'auth/unauthorized-domain') {
+      toast.error('Vercel Domain Unauthorized: Please add your .vercel.app URL under Firebase Console -> Authentication -> Settings -> Authorized Domains.');
+      return;
+    }
+    if (err?.code === 'auth/invalid-api-key' || err?.code === 'auth/api-key-not-valid') {
+      toast.error('Vercel Setup Warning: Missing NEXT_PUBLIC_FIREBASE_API_KEY in Vercel Environment Variables.');
       return;
     }
     const msg = err?.message || err?.code || 'Authentication failed';
