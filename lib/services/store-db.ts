@@ -208,7 +208,7 @@ class InMemoryDatabase {
   }
 
   private async loadFromFirestore() {
-    if (!adminDb && !db) return;
+    if (!adminDb && (typeof window === 'undefined' || !db)) return;
 
     const getCollectionData = async (collName: string): Promise<any[]> => {
       if (adminDb) {
@@ -221,7 +221,7 @@ class InMemoryDatabase {
           // ignore admin error
         }
       }
-      if (db) {
+      if (db && typeof window !== 'undefined') {
         try {
           const snap = await getDocs(collection(db, collName));
           if (!snap.empty) {
