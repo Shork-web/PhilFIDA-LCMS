@@ -30,8 +30,8 @@ import { registrationWorkflowSchema } from '@/lib/validations/schemas';
 type TabType = 'login' | 'register' | 'forgot' | 'verify';
 
 const loginSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().min(1, 'Email or Username is required'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 const forgotSchema = z.object({
@@ -168,13 +168,35 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       if (!auth) throw new Error('Firebase not initialized');
-      const credential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const fbUser = credential.user;
+
+      let loginEmail = values.email.trim();
+      if (!loginEmail.includes('@')) {
+        loginEmail = `${loginEmail.toLowerCase()}@philfida.da.gov.ph`;
+      }
+
+      let fbUser: any = null;
+
+      try {
+        const credential = await signInWithEmailAndPassword(auth, loginEmail, values.password);
+        fbUser = credential.user;
+      } catch (fbErr: any) {
+        // If user credential missing in Firebase Auth, attempt automatic provision or server sync
+        if (fbErr?.code === 'auth/user-not-found' || fbErr?.code === 'auth/invalid-credential') {
+          try {
+            const newCred = await createUserWithEmailAndPassword(auth, loginEmail, values.password);
+            fbUser = newCred.user;
+          } catch {
+            throw fbErr;
+          }
+        } else {
+          throw fbErr;
+        }
+      }
 
       const data = await callPlcmsLogin({
-        email: fbUser.email!,
-        displayName: fbUser.displayName || undefined,
-        photoUrl: fbUser.photoURL || undefined,
+        email: fbUser?.email || loginEmail,
+        displayName: fbUser?.displayName || undefined,
+        photoUrl: fbUser?.photoURL || undefined,
         authProvider: 'email',
       });
 
@@ -190,7 +212,7 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err: any) {
       if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found') {
-        toast.error('Invalid email or password. Please try again.');
+        toast.error('Invalid email/username or password. Please try again.');
       } else if (err?.code === 'auth/too-many-requests') {
         toast.error('Too many failed attempts. Please try again later.');
       } else {
@@ -209,18 +231,16 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
 
-      // Register or Login Google User (Google accounts come pre-verified)
-      const data = await callRegisterApi({
+      const data = await callPlcmsLogin({
         email: fbUser.email!,
         displayName: fbUser.displayName || undefined,
         photoUrl: fbUser.photoURL || undefined,
         authProvider: 'google',
-        emailVerified: true,
       });
 
       if (data.pending || data?.user?.accountStatus === 'Pending') {
         setAuth(data.user);
-        toast.success('Registration submitted! Your account is pending administrator approval.');
+        toast.info('Your account is pending administrator approval.');
         router.push('/pending-approval');
         return;
       }
@@ -410,9 +430,9 @@ export default function LoginPage() {
             {tab === 'login' && (
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
                 <Input
-                  label="Email Address"
-                  placeholder="e.g. juan.delacruz@philfida.da.gov.ph"
-                  type="email"
+                  label="Email or Username"
+                  placeholder="e.g. admin or juan.delacruz@philfida.da.gov.ph"
+                  type="text"
                   error={loginForm.formState.errors.email?.message}
                   {...loginForm.register('email')}
                   className="bg-slate-950 border-slate-700 text-white"
