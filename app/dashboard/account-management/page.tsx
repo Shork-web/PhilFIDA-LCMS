@@ -61,9 +61,12 @@ export default function AccountManagementPage() {
     try {
       const res = await fetch(`/api/users?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to load users');
+      }
       setUsers(data.data || []);
-    } catch {
-      toast.error('Failed to load users');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load users');
     } finally {
       setLoading(false);
     }

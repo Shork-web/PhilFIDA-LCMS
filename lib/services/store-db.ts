@@ -1,8 +1,4 @@
-// PhilFIDA Data Store Engine with Dual Mode (Firestore & Out-of-the-Box Local Seed Store)
-import fs from 'fs';
-import path from 'path';
-
-const DB_FILE_PATH = path.join(process.cwd(), 'data', 'philfida_db_cache.json');
+// PhilFIDA Cloud Database Store Engine (Firebase Cloud Firestore Engine)
 import { 
   Employee, 
   User, 
@@ -211,53 +207,6 @@ class InMemoryDatabase {
     this.init();
   }
 
-  private saveToDisk() {
-    try {
-      const data = {
-        employees: Array.from(this.employees.values()),
-        users: Array.from(this.users.values()),
-        leaveBalances: Array.from(this.leaveBalances.values()),
-        leaveTransactions: Array.from(this.leaveTransactions.values()),
-        monthlyAccrualLogs: Array.from(this.monthlyAccrualLogs.values()),
-      };
-      const dir = path.dirname(DB_FILE_PATH);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf8');
-    } catch {
-      // ignore
-    }
-  }
-
-  private loadFromDisk() {
-    try {
-      if (fs.existsSync(DB_FILE_PATH)) {
-        const raw = fs.readFileSync(DB_FILE_PATH, 'utf8');
-        const data = JSON.parse(raw);
-        if (data) {
-          if (Array.isArray(data.employees) && data.employees.length > 0) {
-            data.employees.forEach((e: Employee) => this.employees.set(e.id, { ...e }));
-          }
-          if (Array.isArray(data.users) && data.users.length > 0) {
-            data.users.forEach((u: User) => this.users.set(u.id, { ...u }));
-          }
-          if (Array.isArray(data.leaveBalances) && data.leaveBalances.length > 0) {
-            data.leaveBalances.forEach((b: LeaveBalance) => this.leaveBalances.set(b.id, { ...b }));
-          }
-          if (Array.isArray(data.leaveTransactions) && data.leaveTransactions.length > 0) {
-            data.leaveTransactions.forEach((t: LeaveTransaction) => this.leaveTransactions.set(t.id, { ...t }));
-          }
-          if (Array.isArray(data.monthlyAccrualLogs) && data.monthlyAccrualLogs.length > 0) {
-            data.monthlyAccrualLogs.forEach((l: MonthlyAccrualLog) => this.monthlyAccrualLogs.set(l.id, { ...l }));
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
   private async loadFromFirestore() {
     if (!adminDb && !db) return;
 
@@ -369,29 +318,22 @@ class InMemoryDatabase {
           this.systemSettings = { ...this.systemSettings, ...item };
         }
       });
-
-      // Save merged state to local disk cache
-      this.saveToDisk();
     } catch {
-      // Fallback silently to disk cache
+      // Ignore
     }
   }
 
   private init() {
     if (this.initialized) return;
 
-    // 1. Seed essential system reference data (roles, leave types, holidays, IT admin accounts)
+    // 1. Seed essential system reference data into memory
     INITIAL_ROLES.forEach(r => this.roles.set(r.id, { ...r }));
     INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
-    // Seed super admin accounts (they won't be overwritten when loadFromDisk merges)
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
 
-    // 2. Restore persisted user/employee data from disk (registered users survive restarts)
-    this.loadFromDisk();
-
-    // 3. Connect to Firebase Cloud Firestore for real-time live data sync
-    this.loadFromFirestore();
+    // 2. Connect to Firebase Cloud Firestore for real-time live data sync
+    this.loadFromFirestore().catch(() => {});
 
     this.initialized = true;
   }
@@ -418,8 +360,6 @@ class InMemoryDatabase {
     INITIAL_LEAVE_TYPES_LIST.forEach(lt => this.leaveTypes.set(lt.id, { ...lt }));
     INITIAL_HOLIDAYS.forEach(h => this.holidays.set(h.id, { ...h }));
     INITIAL_SYSTEM_USERS.forEach(u => this.users.set(u.id, { ...u }));
-
-    this.saveToDisk();
   }
 
 
@@ -458,7 +398,6 @@ class InMemoryDatabase {
       syncToFirestore('leaveBalances', balanceId, lbRecord);
     });
 
-    this.saveToDisk();
     return newEmp;
   }
 
@@ -471,7 +410,6 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.employees.set(id, updated);
-    this.saveToDisk();
     syncToFirestore('employees', id, updated);
     return updated;
   }
@@ -483,33 +421,35 @@ class InMemoryDatabase {
 
   // --- USERS ---
   async getUsers(): Promise<User[]> {
-    const list = Array.from(this.users.values());
+    const list = Array.from(this.users.values()).filter((u): u is User => Boolean(u && typeof u === 'object' && u.id));
     return list.map(u => ({
       ...u,
       employee: u.employeeId ? this.employees.get(u.employeeId) : undefined,
-      role: this.roles.get(u.roleId),
+      role: u.roleId ? this.roles.get(u.roleId) : undefined,
     }));
   }
 
   async getUserById(id: string): Promise<User | null> {
     const u = this.users.get(id);
-    if (!u) return null;
+    if (!u || typeof u !== 'object' || !u.id) return null;
     return {
       ...u,
       employee: u.employeeId ? this.employees.get(u.employeeId) : undefined,
-      role: this.roles.get(u.roleId),
+      role: u.roleId ? this.roles.get(u.roleId) : undefined,
     };
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
+    if (!email) return null;
+    const emailLower = email.toLowerCase();
     const u = Array.from(this.users.values()).find(
-      x => x.email.toLowerCase() === email.toLowerCase() || x.username.toLowerCase() === email.toLowerCase()
+      x => x && typeof x === 'object' && ((x.email && x.email.toLowerCase() === emailLower) || (x.username && x.username.toLowerCase() === emailLower))
     );
     if (!u) return null;
     return {
       ...u,
       employee: u.employeeId ? this.employees.get(u.employeeId) : undefined,
-      role: this.roles.get(u.roleId),
+      role: u.roleId ? this.roles.get(u.roleId) : undefined,
     };
   }
 
@@ -523,7 +463,6 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.users.set(id, newUser);
-    this.saveToDisk();
     syncToFirestore('users', id, newUser);
     return {
       ...newUser,
@@ -541,12 +480,11 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.users.set(id, updated);
-    this.saveToDisk();
     syncToFirestore('users', id, updated);
     return {
       ...updated,
       employee: updated.employeeId ? this.employees.get(updated.employeeId) : undefined,
-      role: this.roles.get(updated.roleId),
+      role: updated.roleId ? this.roles.get(updated.roleId) : undefined,
     };
   }
 
@@ -558,7 +496,6 @@ class InMemoryDatabase {
     }
     const success = this.users.delete(id);
     if (success) {
-      this.saveToDisk();
       removeFromFirestore('users', id);
     }
     return success;
@@ -789,7 +726,6 @@ class InMemoryDatabase {
     };
     this.leaveBalances.set(balanceId, updatedBalance);
     syncToFirestore('leaveBalances', balanceId, updatedBalance);
-    this.saveToDisk();
 
     return {
       ...transaction,
@@ -1292,7 +1228,6 @@ class InMemoryDatabase {
       processedAt: now,
     };
     this.monthlyAccrualLogs.set(id, newLog);
-    this.saveToDisk();
     syncToFirestore('monthlyAccrualLogs', id, newLog);
     return {
       ...newLog,
