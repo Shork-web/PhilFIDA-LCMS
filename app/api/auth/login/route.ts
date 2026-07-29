@@ -98,31 +98,29 @@ export async function POST(req: NextRequest) {
     if (user.accountStatus === 'Pending') {
       const role = user.roleId ? await RoleService.getById(user.roleId) : null;
       const pendingEmployee = user.employeeId ? await EmployeeService.getById(user.employeeId) : null;
-      // Return fully-shaped AuthUser so client-side setAuth() works correctly
-      return NextResponse.json(
-        {
-          error: 'ACCOUNT_PENDING',
-          message: 'Your account is pending administrator approval. You will be notified once approved.',
-          user: {
-            id: user.id,
-            email: user.email,
-            username: user.username,
-            roleId: user.roleId,
-            roleName: role?.roleName || 'Staff (Employee)',
-            permissions: role?.permissions || [],
-            accountStatus: user.accountStatus,
-            employeeId: pendingEmployee?.id,
-            employeeName: pendingEmployee
-              ? `${pendingEmployee.firstName} ${pendingEmployee.lastName}`
-              : user.displayName || user.username,
-            office: pendingEmployee?.office,
-            division: pendingEmployee?.division,
-            position: pendingEmployee?.position,
-            photoUrl: user.photoUrl,
-          },
+      
+      return NextResponse.json({
+        success: true,
+        pending: true,
+        message: 'Your account is pending administrator approval. You will be notified once approved.',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          roleId: user.roleId,
+          roleName: role?.roleName || 'Staff (Employee)',
+          permissions: role?.permissions || [],
+          accountStatus: user.accountStatus,
+          employeeId: pendingEmployee?.id,
+          employeeName: pendingEmployee
+            ? `${pendingEmployee.firstName} ${pendingEmployee.lastName}`
+            : user.displayName || user.username,
+          office: pendingEmployee?.office,
+          division: pendingEmployee?.division,
+          position: pendingEmployee?.position,
+          photoUrl: user.photoUrl,
         },
-        { status: 403 }
-      );
+      });
     }
 
     if (user.accountStatus === 'Disabled') {

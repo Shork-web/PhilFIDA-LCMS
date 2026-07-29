@@ -113,4 +113,25 @@ export const monthlyAccrualSchema = z.object({
   processedBy: z.string().optional(),
 });
 
+export const registrationWorkflowSchema = z.object({
+  displayName: z.string().min(2, 'Full name must be at least 2 characters'),
+  email: z.string().email('Please enter a valid email address'),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters long')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+  confirmPassword: z.string(),
+  appointmentType: z.enum(['Permanent', 'COS / JO'], {
+    required_error: 'Please select Employment Type',
+  }),
+  position: z.string().min(2, 'Position title is required'),
+  office: z.string().min(1, 'Please select your PhilFIDA Office Station'),
+  division: z.string().min(1, 'Please select your division / unit'),
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
 

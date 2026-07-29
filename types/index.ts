@@ -126,7 +126,10 @@ export interface User {
   roleId: string;
   isActive: boolean;
   accountStatus: AccountStatus;
-  authProvider?: 'email' | 'google';
+  authProvider?: 'email' | 'google' | string;
+  authProviders?: Array<'email' | 'google' | string>;
+  emailVerified?: boolean;
+  emailVerificationSentAt?: string;
   photoUrl?: string;
   displayName?: string;
   createdAt: string;

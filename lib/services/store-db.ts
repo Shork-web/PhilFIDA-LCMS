@@ -62,11 +62,11 @@ async function syncToFirestore(collectionName: string, docId: string, data: any)
     }
   }
 
-  if (db) {
+  if (db && typeof window !== 'undefined') {
     try {
       await setDoc(doc(db, collectionName, docId), cleanData, { merge: true });
     } catch (err) {
-      // Silently fall back to in-memory + local disk persistence
+      // Silently handle
     }
   }
 }
@@ -81,11 +81,11 @@ async function removeFromFirestore(collectionName: string, docId: string) {
     }
   }
 
-  if (db) {
+  if (db && typeof window !== 'undefined') {
     try {
       await deleteDoc(doc(db, collectionName, docId));
     } catch (err) {
-      // Silently fall back
+      // Silently handle
     }
   }
 }

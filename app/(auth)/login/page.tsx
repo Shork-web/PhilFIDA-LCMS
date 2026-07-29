@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithPopup,
   sendPasswordResetEmail,
+  sendEmailVerification,
   updateProfile,
 } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase/config';
@@ -17,33 +18,20 @@ import { useAuthStore } from '@/features/auth/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { GovHeader } from '@/components/layout/gov-header';
-import { ShieldCheck, Lock, Mail, Eye, EyeOff, User, KeyRound } from 'lucide-react';
+import { 
+  ShieldCheck, Lock, Mail, Eye, EyeOff, User, KeyRound, 
+  CheckCircle2, AlertCircle, RefreshCw, ArrowLeft, Sparkles
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
 import { PHILFIDA_DIVISIONS, PHILFIDA_OFFICES } from '@/lib/constants';
+import { registrationWorkflowSchema } from '@/lib/validations/schemas';
 
-type TabType = 'login' | 'register' | 'forgot';
+type TabType = 'login' | 'register' | 'forgot' | 'verify';
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-});
-
-const registerSchema = z.object({
-  displayName: z.string().min(2, 'Full name must be at least 2 characters'),
-  email: z.string().email('Enter a valid email address'),
-  appointmentType: z.enum(['Permanent', 'COS / JO'], {
-    required_error: 'Please select Employment Type',
-  }),
-  position: z.string().min(2, 'Position title is required'),
-  office: z.string().min(1, 'Please select your PhilFIDA Office Station'),
-  division: z.string().min(1, 'Please select your division / unit'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirmPassword: z.string(),
-}).refine(d => d.password === d.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
 });
 
 const forgotSchema = z.object({
@@ -51,11 +39,25 @@ const forgotSchema = z.object({
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
-type RegisterValues = z.infer<typeof registerSchema>;
+type RegisterValues = z.infer<typeof registrationWorkflowSchema>;
 type ForgotValues = z.infer<typeof forgotSchema>;
 
-// ─── Helper: call PLCMS API after Firebase auth succeeds ───────────────────
-async function callPlcmsLogin(params: {
+// Helper: Calculate Password Strength (0 to 4)
+function getPasswordStrength(password: string) {
+  if (!password) return { score: 0, label: 'None', color: 'bg-slate-700' };
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[a-z]/.test(password)) score++;
+  if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) score++;
+
+  if (score <= 1) return { score: 1, label: 'Weak', color: 'bg-red-500' };
+  if (score <= 3) return { score: 2, label: 'Medium', color: 'bg-amber-400' };
+  return { score: 4, label: 'Strong', color: 'bg-emerald-400' };
+}
+
+// Helper: Dedicated API call for Registration
+async function callRegisterApi(params: {
   email: string;
   displayName?: string;
   photoUrl?: string;
@@ -63,6 +65,31 @@ async function callPlcmsLogin(params: {
   appointmentType?: string;
   office?: string;
   division?: string;
+  authProvider: 'email' | 'google' | string;
+  emailVerified?: boolean;
+}) {
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw { 
+      code: data.error || 'REGISTRATION_ERROR', 
+      message: data.message || 'Registration failed', 
+      user: data.user 
+    };
+  }
+  return data;
+}
+
+// Helper: Login API Call
+async function callPlcmsLogin(params: {
+  email: string;
+  displayName?: string;
+  photoUrl?: string;
   authProvider: 'email' | 'google';
 }) {
   const res = await fetch('/api/auth/login', {
@@ -71,15 +98,10 @@ async function callPlcmsLogin(params: {
     body: JSON.stringify(params),
   });
 
-  const contentType = res.headers.get('content-type');
-  let data: any = {};
-  if (contentType && contentType.includes('application/json')) {
-    data = await res.json();
-  } else {
-    throw { code: 'SERVER_ERROR', message: 'Server error processing sign up. Please try again.' };
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw { code: data.error, message: data.message || 'Authentication failed', user: data.user };
   }
-
-  if (!res.ok) throw { code: data.error, message: data.message || 'Authentication failed', user: data.user };
   return data;
 }
 
@@ -91,28 +113,49 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Login form
+  // Email Verification Screen State
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Forms
   const loginForm = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
-  // Register form
   const registerForm = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(registrationWorkflowSchema),
     defaultValues: {
+      displayName: '',
+      email: '',
       position: '',
       appointmentType: 'Permanent',
       office: PHILFIDA_OFFICES[0],
       division: PHILFIDA_DIVISIONS[0],
+      password: '',
+      confirmPassword: '',
     },
   });
-
-  // Forgot password form
   const forgotForm = useForm<ForgotValues>({ resolver: zodResolver(forgotSchema) });
 
-  // ─── Handle account status codes ─────────────────────────────────────────
+  // Watch password for live strength meter
+  const watchedPassword = registerForm.watch('password') || '';
+  const pwdStrength = getPasswordStrength(watchedPassword);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  // Handle generic error
   const handleAuthError = (err: any) => {
+    if (err?.code === 'DUPLICATE_ACCOUNT') {
+      toast.error(err.message || 'Account already exists. Switching to Sign In...');
+      setTab('login');
+      if (err?.email) loginForm.setValue('email', err.email);
+      return;
+    }
     if (err?.code === 'ACCOUNT_PENDING') {
-      if (err.user) {
-        setAuth(err.user);
-      }
+      if (err.user) setAuth(err.user);
       router.push('/pending-approval');
       return;
     }
@@ -120,7 +163,7 @@ export default function LoginPage() {
     toast.error(msg);
   };
 
-  // ─── Email/Password Login ─────────────────────────────────────────────────
+  // ─── EMAIL / PASSWORD SIGN IN ─────────────────────────────────────────────
   const onLogin = async (values: LoginValues) => {
     setIsLoading(true);
     try {
@@ -135,6 +178,13 @@ export default function LoginPage() {
         authProvider: 'email',
       });
 
+      if (data.pending || data?.user?.accountStatus === 'Pending') {
+        setAuth(data.user);
+        toast.info('Your account is pending administrator approval.');
+        router.push('/pending-approval');
+        return;
+      }
+
       setAuth(data.user, data.token);
       toast.success(`Welcome back, ${data.user.employeeName || data.user.username}!`);
       router.push('/dashboard');
@@ -142,7 +192,7 @@ export default function LoginPage() {
       if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found') {
         toast.error('Invalid email or password. Please try again.');
       } else if (err?.code === 'auth/too-many-requests') {
-        toast.error('Too many failed attempts. Please try again later or reset your password.');
+        toast.error('Too many failed attempts. Please try again later.');
       } else {
         handleAuthError(err);
       }
@@ -151,7 +201,7 @@ export default function LoginPage() {
     }
   };
 
-  // ─── Google Sign-In ───────────────────────────────────────────────────────
+  // ─── GOOGLE SIGN-IN ────────────────────────────────────────────────────────
   const onGoogleSignIn = async () => {
     setIsLoading(true);
     try {
@@ -159,19 +209,28 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
 
-      const data = await callPlcmsLogin({
+      // Register or Login Google User (Google accounts come pre-verified)
+      const data = await callRegisterApi({
         email: fbUser.email!,
         displayName: fbUser.displayName || undefined,
         photoUrl: fbUser.photoURL || undefined,
         authProvider: 'google',
+        emailVerified: true,
       });
+
+      if (data.pending || data?.user?.accountStatus === 'Pending') {
+        setAuth(data.user);
+        toast.success('Registration submitted! Your account is pending administrator approval.');
+        router.push('/pending-approval');
+        return;
+      }
 
       setAuth(data.user, data.token);
       toast.success(`Welcome, ${data.user.employeeName || data.user.username}!`);
       router.push('/dashboard');
     } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user') {
-        // User cancelled — no error toast needed
+      if (err?.code === 'popup-closed-by-user' || err?.code === 'auth/popup-closed-by-user') {
+        // User closed popup
       } else {
         handleAuthError(err);
       }
@@ -180,15 +239,25 @@ export default function LoginPage() {
     }
   };
 
-  // ─── Email Registration ───────────────────────────────────────────────────
+  // ─── NEW FRESH EMAIL REGISTRATION WORKFLOW ───────────────────────────────
   const onRegister = async (values: RegisterValues) => {
     setIsLoading(true);
     try {
       if (!auth) throw new Error('Firebase not initialized');
+
+      // Step 1: Create user in Firebase Authentication
       const credential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       await updateProfile(credential.user, { displayName: values.displayName });
 
-      const data = await callPlcmsLogin({
+      // Step 2: Dispatch Firebase Email Verification Link
+      try {
+        await sendEmailVerification(credential.user);
+      } catch (e) {
+        console.warn('Email verification send notice:', e);
+      }
+
+      // Step 3: Register in PLCMS Cloud Engine (Pending Admin Approval)
+      const data = await callRegisterApi({
         email: values.email,
         displayName: values.displayName,
         position: values.position,
@@ -196,24 +265,23 @@ export default function LoginPage() {
         office: values.office,
         division: values.division,
         authProvider: 'email',
+        emailVerified: false,
       });
 
-      // If pending, redirect to pending page
-      if (data?.user?.accountStatus === 'Pending') {
-        toast.success('Registration submitted! Please wait for administrator approval.');
-        router.push('/pending-approval');
-        return;
-      }
+      setVerificationEmail(values.email);
+      if (data?.user) setAuth(data.user);
 
-      // If first user (Super Admin), go to dashboard
-      setAuth(data.user, data.token);
-      toast.success('Account created! Welcome to PhilFIDA LCMS.');
-      router.push('/dashboard');
+      // Step 4: Display Email Verification Screen
+      setTab('verify');
+      setResendCooldown(60);
+      toast.success('Verification link sent! Please check your email inbox.');
     } catch (err: any) {
       if (err?.code === 'auth/email-already-in-use') {
-        toast.error('An account with this email already exists. Please sign in instead.');
+        toast.error('An account with this email address already exists. Switching to Sign In...');
+        loginForm.setValue('email', values.email);
+        setTab('login');
       } else if (err?.code === 'auth/weak-password') {
-        toast.error('Password is too weak. Use at least 8 characters with numbers and letters.');
+        toast.error('Password does not meet strength requirements.');
       } else {
         handleAuthError(err);
       }
@@ -222,13 +290,63 @@ export default function LoginPage() {
     }
   };
 
-  // ─── Forgot Password ──────────────────────────────────────────────────────
+  // ─── RESEND EMAIL VERIFICATION ───────────────────────────────────────────
+  const onResendVerification = async () => {
+    if (resendCooldown > 0) return;
+    setIsLoading(true);
+    try {
+      if (auth?.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        toast.success('A new verification link has been sent to your email.');
+        setResendCooldown(60);
+      } else {
+        toast.error('Session expired. Please sign in to request verification.');
+        setTab('login');
+      }
+    } catch {
+      toast.error('Failed to resend verification email. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ─── CHECK EMAIL VERIFIED & PROCEED TO PENDING APPROVAL ─────────────────
+  const onConfirmEmailVerified = async () => {
+    setIsLoading(true);
+    try {
+      if (auth?.currentUser) {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          // Sync with server
+          await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: auth.currentUser.email }),
+          });
+
+          toast.success('Email address verified successfully!');
+          router.push('/pending-approval');
+          return;
+        } else {
+          toast.error('Email not verified yet! Please click the link sent to your inbox.');
+        }
+      } else {
+        router.push('/pending-approval');
+      }
+    } catch {
+      toast.error('Could not verify status. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ─── FORGOT PASSWORD ──────────────────────────────────────────────────────
   const onForgotPassword = async (values: ForgotValues) => {
     setIsLoading(true);
     try {
       if (!auth) throw new Error('Firebase not initialized');
       await sendPasswordResetEmail(auth, values.email);
-      toast.success('Password reset email sent! Check your inbox.');
+      toast.success('Password reset link sent! Please check your email inbox.');
       setTab('login');
     } catch (err: any) {
       if (err?.code === 'auth/user-not-found') {
@@ -250,9 +368,9 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
 
         <div className="w-full max-w-md relative z-10">
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md p-6 sm:p-8">
+          <div className="bg-slate-900/95 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md p-6 sm:p-8">
 
-            {/* Branding */}
+            {/* Header Branding */}
             <div className="flex flex-col items-center text-center space-y-3 mb-6">
               <div className="w-16 h-16 rounded-full bg-[#0F2C59] border-2 border-amber-400 flex items-center justify-center text-amber-400 font-black text-2xl shadow-lg">
                 PF
@@ -267,26 +385,28 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Tab Switcher */}
-            <div className="flex rounded-xl bg-slate-800 p-1 mb-6">
-              {(['login', 'register'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className={cn(
-                    'flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-200',
-                    tab === t
-                      ? 'bg-amber-400 text-[#0F2C59] shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  )}
-                >
-                  {t === 'login' ? 'Sign In' : 'Employee Sign Up'}
-                </button>
-              ))}
-            </div>
+            {/* Tab Switcher (Visible on Login / Register) */}
+            {(tab === 'login' || tab === 'register') && (
+              <div className="flex rounded-xl bg-slate-800/80 p-1 mb-6 border border-slate-700/50">
+                {(['login', 'register'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-200',
+                      tab === t
+                        ? 'bg-amber-400 text-[#0F2C59] shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    )}
+                  >
+                    {t === 'login' ? 'Sign In' : 'Create Account'}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {/* ─── LOGIN FORM ─── */}
+            {/* ─── SIGN IN FORM ─── */}
             {tab === 'login' && (
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
                 <Input
@@ -320,7 +440,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setTab('forgot')}
-                    className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                    className="text-xs text-amber-400 hover:text-amber-300 transition-colors font-medium"
                   >
                     Forgot password?
                   </button>
@@ -336,17 +456,17 @@ export default function LoginPage() {
                   Sign In
                 </Button>
 
-                <div className="relative flex items-center gap-3 my-1">
-                  <div className="flex-1 h-px bg-slate-700" />
-                  <span className="text-xs text-slate-500">or continue with</span>
-                  <div className="flex-1 h-px bg-slate-700" />
+                <div className="relative flex items-center gap-3 my-2">
+                  <div className="flex-1 h-px bg-slate-800" />
+                  <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">or continue with</span>
+                  <div className="flex-1 h-px bg-slate-800" />
                 </div>
 
                 <button
                   type="button"
                   onClick={onGoogleSignIn}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-sm hover:bg-slate-100 transition-colors disabled:opacity-60 shadow-md"
+                  className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-xs hover:bg-slate-100 transition-colors disabled:opacity-60 shadow-md"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -354,17 +474,17 @@ export default function LoginPage() {
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                   </svg>
-                  Continue with Google
+                  Sign In with Google
                 </button>
               </form>
             )}
 
-            {/* ─── REGISTER FORM ─── */}
+            {/* ─── FRESH REDESIGNED REGISTER FORM ─── */}
             {tab === 'register' && (
               <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
                 <div className="p-3 rounded-xl bg-amber-400/10 border border-amber-400/30 text-xs text-amber-300 flex items-start gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>All new sign-ups are created as <strong>Employee</strong> accounts pending Administrator review.</span>
+                  <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+                  <span>All registrations require email verification &amp; Administrator approval.</span>
                 </div>
 
                 <Input
@@ -372,7 +492,7 @@ export default function LoginPage() {
                   placeholder="e.g. Juan Carlos Dela Cruz"
                   error={registerForm.formState.errors.displayName?.message}
                   {...registerForm.register('displayName')}
-                  className="bg-slate-950 border-slate-700 text-white"
+                  className="bg-slate-950 border-slate-700 text-white text-xs"
                 />
 
                 <Input
@@ -381,7 +501,7 @@ export default function LoginPage() {
                   placeholder="e.g. juan.delacruz@philfida.da.gov.ph"
                   error={registerForm.formState.errors.email?.message}
                   {...registerForm.register('email')}
-                  className="bg-slate-950 border-slate-700 text-white"
+                  className="bg-slate-950 border-slate-700 text-white text-xs"
                 />
 
                 <div>
@@ -460,14 +580,15 @@ export default function LoginPage() {
                   )}
                 </div>
 
+                {/* Password Input with Live Strength Gauge */}
                 <div className="relative">
                   <Input
                     label="Password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Min. 8 characters"
+                    placeholder="Min 8 chars (A-Z, a-z, 0-9)"
                     error={registerForm.formState.errors.password?.message}
                     {...registerForm.register('password')}
-                    className="bg-slate-950 border-slate-700 text-white pr-10"
+                    className="bg-slate-950 border-slate-700 text-white pr-10 text-xs"
                   />
                   <button
                     type="button"
@@ -476,16 +597,33 @@ export default function LoginPage() {
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
+
+                  {/* Password Strength Indicator Bar */}
+                  {watchedPassword && (
+                    <div className="mt-1.5 space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Password Strength:</span>
+                        <span className={cn('font-bold', pwdStrength.score === 4 ? 'text-emerald-400' : pwdStrength.score >= 2 ? 'text-amber-400' : 'text-red-400')}>
+                          {pwdStrength.label}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden flex gap-1">
+                        <div className={cn('h-full flex-1 transition-all duration-300', pwdStrength.score >= 1 ? pwdStrength.color : 'bg-slate-800')} />
+                        <div className={cn('h-full flex-1 transition-all duration-300', pwdStrength.score >= 2 ? pwdStrength.color : 'bg-slate-800')} />
+                        <div className={cn('h-full flex-1 transition-all duration-300', pwdStrength.score >= 4 ? pwdStrength.color : 'bg-slate-800')} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="relative">
                   <Input
                     label="Confirm Password"
                     type={showConfirm ? 'text' : 'password'}
-                    placeholder="Re-enter your password"
+                    placeholder="Re-enter password"
                     error={registerForm.formState.errors.confirmPassword?.message}
                     {...registerForm.register('confirmPassword')}
-                    className="bg-slate-950 border-slate-700 text-white pr-10"
+                    className="bg-slate-950 border-slate-700 text-white pr-10 text-xs"
                   />
                   <button
                     type="button"
@@ -499,24 +637,24 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   variant="accent"
-                  className="w-full font-bold py-2.5"
+                  className="w-full font-bold py-2.5 shadow-md"
                   isLoading={isLoading}
                 >
                   <User className="w-4 h-4 mr-2" />
                   Create Account
                 </Button>
 
-                <div className="relative flex items-center gap-3 my-1">
-                  <div className="flex-1 h-px bg-slate-700" />
-                  <span className="text-xs text-slate-500">or</span>
-                  <div className="flex-1 h-px bg-slate-700" />
+                <div className="relative flex items-center gap-3 my-2">
+                  <div className="flex-1 h-px bg-slate-800" />
+                  <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">or</span>
+                  <div className="flex-1 h-px bg-slate-800" />
                 </div>
 
                 <button
                   type="button"
                   onClick={onGoogleSignIn}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-sm hover:bg-slate-100 transition-colors disabled:opacity-60 shadow-md"
+                  className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-xl bg-white text-slate-900 font-bold text-xs hover:bg-slate-100 transition-colors disabled:opacity-60 shadow-md"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -529,15 +667,77 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* ─── FORGOT PASSWORD ─── */}
+            {/* ─── EMAIL VERIFICATION SCREEN ─── */}
+            {tab === 'verify' && (
+              <div className="space-y-4 text-center">
+                <div className="w-14 h-14 rounded-full bg-amber-400/10 border-2 border-amber-400/40 flex items-center justify-center mx-auto text-amber-400 shadow-lg">
+                  <Mail className="w-7 h-7" />
+                </div>
+
+                <div>
+                  <h3 className="text-base font-extrabold text-white">
+                    Verify Your Email Address
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                    A verification link has been sent to: <br />
+                    <strong className="text-amber-400 font-mono text-sm">{verificationEmail || 'your email inbox'}</strong>
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-left space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Next Steps:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-400 pl-1">
+                    <li>Open your email inbox and click the verification link.</li>
+                    <li>Return here and click <strong>&quot;I Have Verified My Email&quot;</strong> below.</li>
+                    <li>Your account will be submitted for Super Admin review.</li>
+                  </ol>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="accent"
+                    className="w-full font-bold py-2.5 shadow-md"
+                    onClick={onConfirmEmailVerified}
+                    isLoading={isLoading}
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    I Have Verified My Email
+                  </Button>
+
+                  <button
+                    type="button"
+                    onClick={onResendVerification}
+                    disabled={resendCooldown > 0 || isLoading}
+                    className="w-full py-2 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
+                    {resendCooldown > 0 ? `Resend Verification Email (${resendCooldown}s)` : 'Resend Verification Email'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTab('login')}
+                    className="w-full text-xs text-slate-400 hover:text-white transition-colors py-1 flex items-center justify-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ─── FORGOT PASSWORD FORM ─── */}
             {tab === 'forgot' && (
               <form onSubmit={forgotForm.handleSubmit(onForgotPassword)} className="space-y-4">
                 <div className="text-center mb-2">
                   <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center mx-auto mb-3">
                     <KeyRound className="w-5 h-5 text-amber-400" />
                   </div>
-                  <p className="text-sm text-slate-300">
-                    Enter your email address and we&apos;ll send you a link to reset your password.
+                  <p className="text-xs text-slate-300">
+                    Enter your registered email address and we&apos;ll send you a password reset link.
                   </p>
                 </div>
 
@@ -553,7 +753,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   variant="accent"
-                  className="w-full font-bold py-2.5"
+                  className="w-full font-bold py-2.5 shadow-md"
                   isLoading={isLoading}
                 >
                   <Mail className="w-4 h-4 mr-2" />
@@ -563,9 +763,9 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setTab('login')}
-                  className="w-full text-xs text-slate-400 hover:text-white transition-colors py-2"
+                  className="w-full text-xs text-slate-400 hover:text-white transition-colors py-2 flex items-center justify-center gap-1"
                 >
-                  ← Back to Sign In
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
                 </button>
               </form>
             )}
