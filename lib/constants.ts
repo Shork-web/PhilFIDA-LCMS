@@ -320,4 +320,11 @@ export const INITIAL_LEAVE_TYPES = [
     isActive: true,
     defaultCreditsPerYear: 0,
   },
+  {
+    code: 'WELLNESS',
+    leaveName: 'Wellness Leave',
+    description: '5 days annual wellness leave granted to Contract of Service (COS) and Job Order (JO) personnel.',
+    isActive: true,
+    defaultCreditsPerYear: 5,
+  },
 ];

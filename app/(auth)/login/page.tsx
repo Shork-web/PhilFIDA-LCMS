@@ -33,6 +33,9 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   displayName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Enter a valid email address'),
+  appointmentType: z.enum(['Permanent', 'COS / JO'], {
+    required_error: 'Please select Employment Type',
+  }),
   position: z.string().min(2, 'Position title is required'),
   office: z.string().min(1, 'Please select your PhilFIDA Office Station'),
   division: z.string().min(1, 'Please select your division / unit'),
@@ -57,6 +60,7 @@ async function callPlcmsLogin(params: {
   displayName?: string;
   photoUrl?: string;
   position?: string;
+  appointmentType?: string;
   office?: string;
   division?: string;
   authProvider: 'email' | 'google';
@@ -66,7 +70,15 @@ async function callPlcmsLogin(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
-  const data = await res.json();
+
+  const contentType = res.headers.get('content-type');
+  let data: any = {};
+  if (contentType && contentType.includes('application/json')) {
+    data = await res.json();
+  } else {
+    throw { code: 'SERVER_ERROR', message: 'Server error processing sign up. Please try again.' };
+  }
+
   if (!res.ok) throw { code: data.error, message: data.message || 'Authentication failed', user: data.user };
   return data;
 }
@@ -86,6 +98,7 @@ export default function LoginPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       position: '',
+      appointmentType: 'Permanent',
       office: PHILFIDA_OFFICES[0],
       division: PHILFIDA_DIVISIONS[0],
     },
@@ -179,6 +192,7 @@ export default function LoginPage() {
         email: values.email,
         displayName: values.displayName,
         position: values.position,
+        appointmentType: values.appointmentType,
         office: values.office,
         division: values.division,
         authProvider: 'email',
@@ -369,6 +383,24 @@ export default function LoginPage() {
                   {...registerForm.register('email')}
                   className="bg-slate-950 border-slate-700 text-white"
                 />
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Employment Type <span className="text-amber-400">*</span>
+                  </label>
+                  <select
+                    {...registerForm.register('appointmentType')}
+                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="Permanent">Permanent</option>
+                    <option value="COS / JO">COS / JO (Contract of Service / Job Order)</option>
+                  </select>
+                  {registerForm.formState.errors.appointmentType && (
+                    <p className="text-[11px] text-red-400 mt-1">
+                      {registerForm.formState.errors.appointmentType.message}
+                    </p>
+                  )}
+                </div>
 
                 <Input
                   label="Position Title"

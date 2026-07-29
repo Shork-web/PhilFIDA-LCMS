@@ -17,7 +17,7 @@ import { BootstrapService } from '@/lib/services/bootstrap-service';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, displayName, photoUrl, authProvider, position, division, office } = body as {
+    const { email, displayName, photoUrl, authProvider, position, division, office, appointmentType } = body as {
       email: string;
       displayName?: string;
       photoUrl?: string;
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       position?: string;
       division?: string;
       office?: string;
+      appointmentType?: string;
     };
 
     if (!email) {
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
           position: position || 'Employee - Staff',
           office: office || 'PhilFIDA Regional Office VII - Cebu HQ',
           division: division || 'AFMD - Admin Finance and Management Division',
-          appointmentType: 'Permanent',
+          appointmentType: appointmentType || 'Permanent',
           employmentStatus: 'Active',
           appointmentDate: new Date().toISOString().split('T')[0],
           isActive: true,

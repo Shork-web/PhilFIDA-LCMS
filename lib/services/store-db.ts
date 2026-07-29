@@ -385,13 +385,30 @@ class InMemoryDatabase {
     syncToFirestore('employees', id, newEmp);
 
     // Initialize default leave balances for new employee
+    const isCOSorJO = newEmp.appointmentType === 'COS / JO' || newEmp.appointmentType === 'COS/JO' || newEmp.appointmentType === 'Job Order' || newEmp.appointmentType === 'Contractual';
+
     this.leaveTypes.forEach((lt) => {
+      if (!lt || !lt.id) return;
       const balanceId = `lb_${id}_${lt.id}`;
+      let initialBalance = 0;
+
+      if (isCOSorJO) {
+        const isWellness = Boolean(
+          (lt.code && lt.code.toUpperCase() === 'WELLNESS') ||
+          (lt.leaveName && typeof lt.leaveName === 'string' && lt.leaveName.toLowerCase().includes('wellness'))
+        );
+        if (isWellness) {
+          initialBalance = 5; // COS and JO accounts receive 5 days of wellness leave per year
+        } else {
+          initialBalance = 0; // COS / JO accounts have 0 balance for standard permanent leave types
+        }
+      }
+
       const lbRecord: LeaveBalance = {
         id: balanceId,
         employeeId: id,
         leaveTypeId: lt.id,
-        balance: 0,
+        balance: initialBalance,
         lastUpdated: now,
       };
       this.leaveBalances.set(balanceId, lbRecord);

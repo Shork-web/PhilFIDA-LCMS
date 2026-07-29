@@ -11,7 +11,8 @@ export class AccrualService {
   static async previewMonthlyAccrual(month: number, year: number) {
     const settings = await dbStore.getSystemSettings();
     const employees = await dbStore.getEmployees();
-    const activeEmployees = employees.filter(e => e.isActive && e.employmentStatus === 'Active');
+    const isCOSorJO = (e: Employee) => e.appointmentType === 'COS / JO' || e.appointmentType === 'COS/JO' || e.appointmentType === 'Job Order' || e.appointmentType === 'Contractual';
+    const activeEmployees = employees.filter(e => e.isActive && e.employmentStatus === 'Active' && !isCOSorJO(e));
     const existingLogs = await dbStore.getMonthlyAccrualLogs({ month, year });
     const processedEmpIds = new Set(existingLogs.map(l => l.employeeId));
 
@@ -41,7 +42,8 @@ export class AccrualService {
   static async executeMonthlyAccrual(month: number, year: number, processedBy: string = 'Admin Engine') {
     const settings = await dbStore.getSystemSettings();
     const employees = await dbStore.getEmployees();
-    const activeEmployees = employees.filter(e => e.isActive && e.employmentStatus === 'Active');
+    const isCOSorJO = (e: Employee) => e.appointmentType === 'COS / JO' || e.appointmentType === 'COS/JO' || e.appointmentType === 'Job Order' || e.appointmentType === 'Contractual';
+    const activeEmployees = employees.filter(e => e.isActive && e.employmentStatus === 'Active' && !isCOSorJO(e));
     const leaveTypes = await dbStore.getLeaveTypes();
 
     const vlType = leaveTypes.find(lt => lt.code === 'VL') || leaveTypes[0];
